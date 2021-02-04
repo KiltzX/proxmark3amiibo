@@ -1,0 +1,145 @@
+####################################################################################
+#             Command : perl tools/pm3_amii_bin2eml.pl xx.bin > xx.eml             #
+####################################################################################
+
+
+
+
+
+
+
+####################################################################################
+#                                                                                  #
+#                       Zelda Breath Of The Wild Collection                        #
+#                                                                                  #
+####################################################################################
+
+
+*8-bit Link
+hf mf eload u amiibo/Zelda/8-BITLink
+hf 14a sim -t 7 -u 04B339DAE94C80
+
+
+*Archer Link :
+hf mf eload u amiibo/Zelda/Archer_Link
+hf 14a sim -t 7 -u 048D5B32784C80
+
+
+*Bokolin
+hf mf eload u amiibo/Zelda/Bokoblin
+hf 14a sim -t 7 -u 0480C72AEA4C80
+
+
+*Daruk
+hf mf eload u amiibo/Zelda/Daruk
+hf 14a sim -t 7 -u 046C4992AA5280
+
+
+*Ganondorf
+hf mf eload u amiibo/Zelda/Ganondorf
+hf 14a sim -t 7 -u 0430400AC74081
+
+
+*Guardian
+hf mf eload u amiibo/Zelda/Guardian
+hf 14a sim -t 7 -u 04BF5C42754C80
+
+
+*Link
+hf mf eload u amiibo/Zelda/Link
+hf 14a sim -t 7 -u 04BD7A0AFE3D80
+
+
+*Link (Link's Awakening)
+hf mf eload u amiibo/Zelda/Link_LA
+hf 14a sim -t 7 -u 04DD64A2D96480
+
+
+*Link (Majora's Mask)
+hf mf eload u amiibo/Zelda/Link_MM
+hf 14a sim -t 7 -u 04B339DAE94B81
+
+
+*Link (Ocarina of time)
+hf mf eload u amiibo/Zelda/Link_OOT
+hf 14a sim -t 7 -u 047100F2E94C84
+
+
+*Link (Skyward Sword)
+hf mf eload u amiibo/Zelda/Link_SS
+hf 14a sim -t 7 -u 04B339DAE94A82
+
+
+*Link (Twilight Princess)
+hf mf eload u amiibo/Zelda/Link_TP
+hf 14a sim -t 7 -u 042B5592AA5280
+
+
+*Link Rider
+hf mf eload u amiibo/Zelda/Link_Rider
+hf 14a sim -t 7 -u 0472775A754C80
+
+
+*Mipha
+hf mf eload u amiibo/Zelda/Mipha
+hf 14a sim -t 7 -u 04C25292AA5280
+
+
+*Revali
+hf mf eload u amiibo/Zelda/Revali
+hf 14a sim -t 7 -u 045C4792AA5281
+
+
+*Sheik
+hf mf eload u amiibo/Zelda/Sheik
+hf 14a sim -t 7 -u 047B6EB2A13E80
+
+
+*Toon Link
+hf mf eload u amiibo/Zelda/Toon_Link
+hf 14a sim -t 7 -u 04219ADAE94C81
+
+
+*Toon Link Super Smash Bros
+hf mf eload u amiibo/Zelda/Toon_Link_SSB
+hf 14a sim -t 7 -u 04F09472DD4C80
+
+
+*Toon Zelda
+hf mf eload u amiibo/Zelda/Toon_Zelda
+hf 14a sim -t 7 -u 04DAB4D2B94C80
+
+
+*Super Smash Bros Link
+hf mf eload u amiibo/Zelda/SSB_Link
+hf 14a sim -t 7 -u 049A643A124A80
+
+
+*Urbosa
+hf mf eload u amiibo/Zelda/Urbosa
+hf 14a sim -t 7 -u 04A15192AA5280
+
+
+*Wolf link
+hf mf eload u amiibo/Zelda/Wolf_Link
+hf 14a sim -t 7 -u 0491A492754C81
+
+
+*Wolf Link (20 Heart full life)
+hf mf eload u amiibo/Zelda/Wolf_Link_Full
+hf 14a sim -t 7 -u 0491A492754C81
+
+
+*Young Link
+hf mf eload u amiibo/Zelda/Young_Link
+hf 14a sim -t 7 -u 049708B2435F84
+
+
+*Zelda (Breath Of The Wild)
+hf mf eload u amiibo/Zelda/Zelda
+hf 14a sim -t 7 -u 04CF1C4AE04C80
+
+
+*Zelda Super Smash Bros
+hf mf eload u amiibo/Zelda/Zelda_SSB
+hf 14a sim -t 7 -u 04E6390A1F3E80
