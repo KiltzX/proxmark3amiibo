@@ -13,6 +13,7 @@
 #include <string.h>
 #include <ctype.h>        // tolower
 #include <math.h>
+#include <inttypes.h>     // PRIx64 macro
 #include "commonutil.h"   // reflect...
 #include "comms.h"        // clearCommandBuffer
 #include "cmdparser.h"    // command_t
@@ -27,14 +28,15 @@
 #include "proxgui.h"
 #include "cliparser.h"
 #include "generator.h"    // generate nuid
+#include "iso14b.h"       // defines for ETU conversions
 
 static int CmdHelp(const char *Cmd);
 
 static uint8_t calculateLRC(uint8_t *bytes, uint8_t len) {
-    uint8_t LRC = 0;
+    uint8_t lcr = 0;
     for (uint8_t i = 0; i < len; i++)
-        LRC ^= bytes[i];
-    return LRC;
+        lcr ^= bytes[i];
+    return lcr;
 }
 /*
 static uint16_t matrixadd ( uint8_t* bytes, uint8_t len){
@@ -55,7 +57,7 @@ static uint16_t shiftadd ( uint8_t* bytes, uint8_t len){
 }
 */
 static uint16_t calcSumCrumbAdd(uint8_t *bytes, uint8_t len, uint32_t mask) {
-    uint16_t sum = 0;
+    uint32_t sum = 0;
     for (uint8_t i = 0; i < len; i++) {
         sum += CRUMB(bytes[i], 0);
         sum += CRUMB(bytes[i], 2);
@@ -63,25 +65,25 @@ static uint16_t calcSumCrumbAdd(uint8_t *bytes, uint8_t len, uint32_t mask) {
         sum += CRUMB(bytes[i], 6);
     }
     sum &= mask;
-    return sum;
+    return (sum & 0xFFFF);
 }
 static uint16_t calcSumCrumbAddOnes(uint8_t *bytes, uint8_t len, uint32_t mask) {
     return (~calcSumCrumbAdd(bytes, len, mask) & mask);
 }
 static uint16_t calcSumNibbleAdd(uint8_t *bytes, uint8_t len, uint32_t mask) {
-    uint16_t sum = 0;
+    uint32_t sum = 0;
     for (uint8_t i = 0; i < len; i++) {
         sum += NIBBLE_LOW(bytes[i]);
         sum += NIBBLE_HIGH(bytes[i]);
     }
     sum &= mask;
-    return sum;
+    return (sum & 0xFFFF);
 }
 static uint16_t calcSumNibbleAddOnes(uint8_t *bytes, uint8_t len, uint32_t mask) {
     return (~calcSumNibbleAdd(bytes, len, mask) & mask);
 }
 static uint16_t calcSumCrumbXor(uint8_t *bytes, uint8_t len, uint32_t mask) {
-    uint16_t sum = 0;
+    uint32_t sum = 0;
     for (uint8_t i = 0; i < len; i++) {
         sum ^= CRUMB(bytes[i], 0);
         sum ^= CRUMB(bytes[i], 2);
@@ -89,32 +91,32 @@ static uint16_t calcSumCrumbXor(uint8_t *bytes, uint8_t len, uint32_t mask) {
         sum ^= CRUMB(bytes[i], 6);
     }
     sum &= mask;
-    return sum;
+    return (sum & 0xFFFF);
 }
 static uint16_t calcSumNibbleXor(uint8_t *bytes, uint8_t len, uint32_t mask) {
-    uint16_t sum = 0;
+    uint32_t sum = 0;
     for (uint8_t i = 0; i < len; i++) {
         sum ^= NIBBLE_LOW(bytes[i]);
         sum ^= NIBBLE_HIGH(bytes[i]);
     }
     sum &= mask;
-    return sum;
+    return (sum & 0xFFFF);
 }
 static uint16_t calcSumByteXor(uint8_t *bytes, uint8_t len, uint32_t mask) {
-    uint16_t sum = 0;
+    uint32_t sum = 0;
     for (uint8_t i = 0; i < len; i++) {
         sum ^= bytes[i];
     }
     sum &= mask;
-    return sum;
+    return (sum & 0xFFFF);
 }
 static uint16_t calcSumByteAdd(uint8_t *bytes, uint8_t len, uint32_t mask) {
-    uint16_t sum = 0;
+    uint32_t sum = 0;
     for (uint8_t i = 0; i < len; i++) {
         sum += bytes[i];
     }
     sum &= mask;
-    return sum;
+    return (sum & 0xFFFF);
 }
 // Ones complement
 static uint16_t calcSumByteAddOnes(uint8_t *bytes, uint8_t len, uint32_t mask) {
@@ -122,24 +124,24 @@ static uint16_t calcSumByteAddOnes(uint8_t *bytes, uint8_t len, uint32_t mask) {
 }
 
 static uint16_t calcSumByteSub(uint8_t *bytes, uint8_t len, uint32_t mask) {
-    uint8_t sum = 0;
+    uint32_t sum = 0;
     for (uint8_t i = 0; i < len; i++) {
         sum -= bytes[i];
     }
     sum &= mask;
-    return sum;
+    return (sum & 0xFFFF);
 }
 static uint16_t calcSumByteSubOnes(uint8_t *bytes, uint8_t len, uint32_t mask) {
     return (~calcSumByteSub(bytes, len, mask) & mask);
 }
 static uint16_t calcSumNibbleSub(uint8_t *bytes, uint8_t len, uint32_t mask) {
-    uint8_t sum = 0;
+    uint32_t sum = 0;
     for (uint8_t i = 0; i < len; i++) {
         sum -= NIBBLE_LOW(bytes[i]);
         sum -= NIBBLE_HIGH(bytes[i]);
     }
     sum &= mask;
-    return sum;
+    return (sum & 0xFFFF);
 }
 static uint16_t calcSumNibbleSubOnes(uint8_t *bytes, uint8_t len, uint32_t mask) {
     return (~calcSumNibbleSub(bytes, len, mask) & mask);
@@ -147,18 +149,18 @@ static uint16_t calcSumNibbleSubOnes(uint8_t *bytes, uint8_t len, uint32_t mask)
 
 // BSD shift checksum 8bit version
 static uint16_t calcBSDchecksum8(uint8_t *bytes, uint8_t len, uint32_t mask) {
-    uint16_t sum = 0;
+    uint32_t sum = 0;
     for (uint8_t i = 0; i < len; i++) {
         sum = ((sum & 0xFF) >> 1) | ((sum & 0x1) << 7);   // rotate accumulator
         sum += bytes[i];  // add next byte
         sum &= 0xFF;  //
     }
     sum &= mask;
-    return sum;
+    return (sum & 0xFFFF);
 }
 // BSD shift checksum 4bit version
 static uint16_t calcBSDchecksum4(uint8_t *bytes, uint8_t len, uint32_t mask) {
-    uint16_t sum = 0;
+    uint32_t sum = 0;
     for (uint8_t i = 0; i < len; i++) {
         sum = ((sum & 0xF) >> 1) | ((sum & 0x1) << 3);   // rotate accumulator
         sum += NIBBLE_HIGH(bytes[i]);  // add high nibble
@@ -168,7 +170,7 @@ static uint16_t calcBSDchecksum4(uint8_t *bytes, uint8_t len, uint32_t mask) {
         sum &= 0xF;  //
     }
     sum &= mask;
-    return sum;
+    return (sum & 0xFFFF);
 }
 
 // 0xFF - ( n1 ^ n... )
@@ -226,7 +228,7 @@ static int CmdAnalyseLfsr(const char *Cmd) {
     for (uint8_t i = 0x01; i < 0x30; i += 1) {
         legic_prng_init(iv);
         legic_prng_forward(i);
-        uint16_t lfsr = legic_prng_get_bits(12);  /* Any nonzero start state will work. */
+        uint32_t lfsr = legic_prng_get_bits(12);  /* Any nonzero start state will work. */
         PrintAndLogEx(INFO, " %02X |  %03X |  %03X  | %03X", i, lfsr, 0x40 ^ lfsr, find ^ lfsr);
     }
     PrintAndLogEx(INFO, "----+------+-------+--------------");
@@ -257,7 +259,7 @@ static int CmdAnalyseLCR(const char *Cmd) {
         return PM3_EINVARG;
     }
 
-    uint8_t finalXor = calculateLRC(data, dlen);
+    uint8_t finalXor = calculateLRC(data, (uint8_t)dlen);
     PrintAndLogEx(SUCCESS, "Target [%02X] requires final LRC XOR byte value: " _YELLOW_("0x%02X"), data[dlen - 1], finalXor);
     PrintAndLogEx(NORMAL, "");
     return PM3_SUCCESS;
@@ -287,15 +289,15 @@ static int CmdAnalyseCRC(const char *Cmd) {
         return PM3_EINVARG;
     }
 
-    PrintAndLogEx(INFO, "\nTests with (%d) | %s", dlen, sprint_hex(data, dlen));
+    PrintAndLogEx(INFO, "\nTests with (%d) | %s", dlen, sprint_hex(data, (size_t)dlen));
 
     // 51  f5  7a  d6
     uint8_t uid[] = {0x51, 0xf5, 0x7a, 0xd6}; //12 34 56
     init_table(CRC_LEGIC);
-    uint8_t legic8 = CRC8Legic(uid, sizeof(uid));
-    PrintAndLogEx(INFO, "Legic 16 | %X (EF6F expected) [legic8 = %02x]", crc16_legic(data, dlen, legic8), legic8);
+    uint8_t legic8 = CRC8Legic(uid, sizeof(uid)) & 0xFF;
+    PrintAndLogEx(INFO, "Legic 16 | %X (EF6F expected) [legic8 = %02x]", crc16_legic(data, (size_t)dlen, legic8), legic8);
     init_table(CRC_FELICA);
-    PrintAndLogEx(INFO, "FeliCa | %X ", crc16_xmodem(data, dlen));
+    PrintAndLogEx(INFO, "FeliCa | %X ", crc16_xmodem(data, (size_t)dlen));
 
     PrintAndLogEx(INFO, "\nTests of reflection. Current methods in source code");
     PrintAndLogEx(INFO, "   reflect(0x3e23L,3) is %04X == 0x3e26", reflect(0x3e23L, 3));
@@ -304,9 +306,9 @@ static int CmdAnalyseCRC(const char *Cmd) {
 
     uint8_t b1, b2;
     // ISO14443 crc B
-    compute_crc(CRC_14443_B, data, dlen, &b1, &b2);
-    uint16_t crcBB_1 = b1 << 8 | b2;
-    uint16_t bbb = Crc16ex(CRC_14443_B, data, dlen);
+    compute_crc(CRC_14443_B, data, (size_t)dlen, &b1, &b2);
+    uint16_t crcBB_1 = (uint16_t)(b1 << 8 | b2);
+    uint16_t bbb = Crc16ex(CRC_14443_B, data, (size_t)dlen);
     PrintAndLogEx(INFO, "ISO14443 crc B  | %04x == %04x \n", crcBB_1, bbb);
 
 
@@ -315,7 +317,7 @@ static int CmdAnalyseCRC(const char *Cmd) {
 
     PrintAndLogEx(INFO, "\n\nStandard test with 31 32 33 34 35 36 37 38 39  '123456789'\n\n");
     uint8_t dataStr[] = { 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39 };
-    legic8 = CRC8Legic(dataStr, sizeof(dataStr));
+    legic8 = CRC8Legic(dataStr, sizeof(dataStr)) & 0xFF;
 
     //these below has been tested OK.
     PrintAndLogEx(INFO, "Confirmed CRC Implementations");
@@ -339,27 +341,27 @@ static int CmdAnalyseCRC(const char *Cmd) {
 
     // ISO14443 crc A
     compute_crc(CRC_14443_A, dataStr, sizeof(dataStr), &b1, &b2);
-    uint16_t crcAA = b1 << 8 | b2;
+    uint16_t crcAA = (uint16_t)(b1 << 8 | b2);
     PrintAndLogEx(INFO, "ISO14443 crc A  | %04x or %04x (BF05 expected)\n", crcAA, Crc16ex(CRC_14443_A, dataStr, sizeof(dataStr)));
 
     // ISO14443 crc B
     compute_crc(CRC_14443_B, dataStr, sizeof(dataStr), &b1, &b2);
-    uint16_t crcBB = b1 << 8 | b2;
+    uint16_t crcBB = (uint16_t)(b1 << 8 | b2);
     PrintAndLogEx(INFO, "ISO14443 crc B  | %04x or %04x (906E expected)\n", crcBB, Crc16ex(CRC_14443_B, dataStr, sizeof(dataStr)));
 
     // ISO15693 crc  (x.25)
     compute_crc(CRC_15693, dataStr, sizeof(dataStr), &b1, &b2);
-    uint16_t crcCC = b1 << 8 | b2;
+    uint16_t crcCC = (uint16_t)(b1 << 8 | b2);
     PrintAndLogEx(INFO, "ISO15693 crc X25| %04x or %04x (906E expected)\n", crcCC, Crc16ex(CRC_15693, dataStr, sizeof(dataStr)));
 
     // ICLASS
     compute_crc(CRC_ICLASS, dataStr, sizeof(dataStr), &b1, &b2);
-    uint16_t crcDD = b1 << 8 | b2;
+    uint16_t crcDD = (uint16_t)(b1 << 8 | b2);
     PrintAndLogEx(INFO, "ICLASS crc      | %04x or %04x\n", crcDD, Crc16ex(CRC_ICLASS, dataStr, sizeof(dataStr)));
 
     // FeliCa
     compute_crc(CRC_FELICA, dataStr, sizeof(dataStr), &b1, &b2);
-    uint16_t crcEE = b1 << 8 | b2;
+    uint16_t crcEE = (uint16_t)(b1 << 8 | b2);
     PrintAndLogEx(INFO, "FeliCa          | %04x or %04x (31C3 expected)\n", crcEE, Crc16ex(CRC_FELICA, dataStr, sizeof(dataStr)));
 
 
@@ -398,25 +400,25 @@ static int CmdAnalyseCHKSUM(const char *Cmd) {
         PrintAndLogEx(FAILED, "Error parsing bytes");
         return PM3_EINVARG;
     }
-    const char *s = arg_get_str(ctx, 2)->sval[0];
+    const char *m = arg_get_str(ctx, 2)->sval[0];
     bool verbose = arg_get_lit(ctx, 3);
     CLIParserFree(ctx);
 
-    uint32_t mlen = 0;
-    if (s)
-        mlen = strlen(s);
+    size_t mlen = 0;
+    if (m)
+        mlen = strlen(m);
 
     if (mlen > 8) {
         PrintAndLogEx(FAILED, "Mask value is max 4 hex bytes");
         return PM3_EINVARG;
     }
 
-    uint32_t mask = 0;
+    uint16_t mask = 0;
     if (mlen == 0) {
         mask = 0xFFFF;
     } else {
-        for (int i = 0; i < mlen; i++) {
-            char c = s[i];
+        for (size_t i = 0; i < mlen; i++) {
+            char c = m[i];
             // capitalize
             if (c >= 'a' && c <= 'f')
                 c -= 32;
@@ -429,7 +431,7 @@ static int CmdAnalyseCHKSUM(const char *Cmd) {
                 continue;
 
             mask <<= 4;
-            mask |= c;
+            mask |= (uint8_t)c;
         }
     }
 
@@ -442,22 +444,22 @@ static int CmdAnalyseCHKSUM(const char *Cmd) {
         PrintAndLogEx(INFO, "------------------+-------------+------------------+-----------------+------------------+-----------+-------------");
     }
     PrintAndLogEx(INFO, "0x%X 0x%X   0x%X  | 0x%X 0x%X   | 0x%X 0x%X   0x%X | 0x%X 0x%X       | 0x%X 0x%X   0x%X   | 0x%X  0x%X | 0x%X\n",
-                  calcSumByteAdd(data, dlen, mask)
-                  , calcSumNibbleAdd(data, dlen, mask)
-                  , calcSumCrumbAdd(data, dlen, mask)
-                  , calcSumByteSub(data, dlen, mask)
-                  , calcSumNibbleSub(data, dlen, mask)
-                  , calcSumByteAddOnes(data, dlen, mask)
-                  , calcSumNibbleAddOnes(data, dlen, mask)
-                  , calcSumCrumbAddOnes(data, dlen, mask)
-                  , calcSumByteSubOnes(data, dlen, mask)
-                  , calcSumNibbleSubOnes(data, dlen, mask)
-                  , calcSumByteXor(data, dlen, mask)
-                  , calcSumNibbleXor(data, dlen, mask)
-                  , calcSumCrumbXor(data, dlen, mask)
-                  , calcBSDchecksum8(data, dlen, mask)
-                  , calcBSDchecksum4(data, dlen, mask)
-                  , calcXORchecksum(data, dlen, mask)
+                  calcSumByteAdd(data, (uint8_t)dlen, mask)
+                  , calcSumNibbleAdd(data, (uint8_t)dlen, mask)
+                  , calcSumCrumbAdd(data, (uint8_t)dlen, mask)
+                  , calcSumByteSub(data, (uint8_t)dlen, mask)
+                  , calcSumNibbleSub(data, (uint8_t)dlen, mask)
+                  , calcSumByteAddOnes(data, (uint8_t)dlen, mask)
+                  , calcSumNibbleAddOnes(data, (uint8_t)dlen, mask)
+                  , calcSumCrumbAddOnes(data, (uint8_t)dlen, mask)
+                  , calcSumByteSubOnes(data, (uint8_t)dlen, mask)
+                  , calcSumNibbleSubOnes(data, (uint8_t)dlen, mask)
+                  , calcSumByteXor(data, (uint8_t)dlen, mask)
+                  , calcSumNibbleXor(data, (uint8_t)dlen, mask)
+                  , calcSumCrumbXor(data, (uint8_t)dlen, mask)
+                  , calcBSDchecksum8(data, (uint8_t)dlen, mask)
+                  , calcBSDchecksum4(data, (uint8_t)dlen, mask)
+                  , calcXORchecksum(data, (uint8_t)dlen, mask)
                  );
     return PM3_SUCCESS;
 }
@@ -550,6 +552,13 @@ static int CmdAnalyseA(const char *Cmd) {
         PrintAndLogEx(FAILED, "Error parsing bytes");
         return PM3_EINVARG;
     }
+
+    uint64_t key = 0;
+    res = mfc_algo_touch_one(data, 0, 0, &key);
+    if (res == PM3_SUCCESS) {
+        PrintAndLogEx(SUCCESS, "KEY A | %012" PRIx64, key);
+    }
+
     CLIParserFree(ctx);
     return PM3_SUCCESS;
 
@@ -938,7 +947,7 @@ static int CmdAnalyseDemodBuffer(const char *Cmd) {
     };
     CLIExecWithReturn(ctx, Cmd, argtable, true);
     const char *s = arg_get_str(ctx, 1)->sval[0];
-    int len = MIN(strlen(s), MAX_DEMOD_BUF_LEN);
+    size_t len = MIN(strlen(s), MAX_DEMOD_BUF_LEN);
 
     // add 1 for null terminator.
     uint8_t *data = calloc(len + 1,  sizeof(uint8_t));
@@ -947,7 +956,7 @@ static int CmdAnalyseDemodBuffer(const char *Cmd) {
         return PM3_EMALLOC;
     }
 
-    for (int i = 0; i <= strlen(s); i++) {
+    for (size_t i = 0; i <= strlen(s); i++) {
         char c = s[i];
         if (c == '1')
             DemodBuffer[i] = 1;
@@ -999,7 +1008,7 @@ static int CmdAnalyseFreq(const char *Cmd) {
 static int CmdAnalyseFoo(const char *Cmd) {
 
     CLIParserContext *ctx;
-    CLIParserInit(&ctx, "analyze foo",
+    CLIParserInit(&ctx, "analyse foo",
                   "experiments of cliparse",
                   "analyse foo -r a0000000a0002021"
                  );
@@ -1023,7 +1032,7 @@ static int CmdAnalyseFoo(const char *Cmd) {
     CLIParserFree(ctx);
 
     PrintAndLogEx(INFO, "-r");
-    PrintAndLogEx(INFO, "Got:  %s", sprint_hex_inrow(data, datalen));
+    PrintAndLogEx(INFO, "Got:  %s", sprint_hex_inrow(data, (size_t)datalen));
     PrintAndLogEx(INFO, "Got:  %s", data3);
 
     ClearGraph(false);
@@ -1070,6 +1079,81 @@ static int CmdAnalyseFoo(const char *Cmd) {
     return PM3_SUCCESS;
 }
 
+static int CmdAnalyseUnits(const char *Cmd) {
+
+    CLIParserContext *ctx;
+    CLIParserInit(&ctx, "analyse units",
+                  "experiments of unit conversions found in HF. ETU (1/13.56mhz), US or SSP_CLK (1/3.39MHz)",
+                  "analyse uints --etu 10"
+                  "analyse uints --us 100"
+                 );
+
+    void *argtable[] = {
+        arg_param_begin,
+        arg_int0(NULL, "etu", "<dec>", "number in ETU"),
+        arg_int0(NULL, "us", "<dec>", "number in micro seconds (us)"),
+        arg_param_end
+    };
+    CLIExecWithReturn(ctx, Cmd, argtable, false);
+
+    int etu = arg_get_int_def(ctx, 1, -1);
+    int us = arg_get_int_def(ctx, 2, -1);
+    CLIParserFree(ctx);
+
+    if (etu == -1 && us == -1) {
+        PrintAndLogEx(INFO, "US to ETU conversions");
+        PrintAndLogEx(INFO, "  9 US = %u ETU (expect 1) " _GREEN_("ok"), US_TO_ETU(9));
+        PrintAndLogEx(INFO, "  10 US = %u ETU (expect 1) " _GREEN_("ok"), US_TO_ETU(10));
+        PrintAndLogEx(INFO, "  94 US = %u ETU (expect 10) " _GREEN_("ok"), US_TO_ETU(94));
+        PrintAndLogEx(INFO, "  95 US = %u ETU (expect 10) " _GREEN_("ok"), US_TO_ETU(95));
+        PrintAndLogEx(INFO, "  302 US = %u ETU (expect 32) " _GREEN_("ok"), US_TO_ETU(302));
+        PrintAndLogEx(NORMAL, "");
+
+        PrintAndLogEx(INFO, "ETU to US conversions");
+        PrintAndLogEx(INFO, "   1 ETU = %u US (expect 9.43) " _GREEN_("ok"), ETU_TO_US(1));
+        PrintAndLogEx(INFO, "  10 ETU = %u US (expect 94.39) " _GREEN_("ok"), ETU_TO_US(10));
+        PrintAndLogEx(INFO, "  32 ETU = %u US (expect 302) " _GREEN_("ok"), ETU_TO_US(32));
+        PrintAndLogEx(NORMAL, "");
+
+        PrintAndLogEx(INFO, "US to SSP CLK 3.39MHz conversions");
+        PrintAndLogEx(INFO, "   9 US = %u SSP (expect 32) ", US_TO_SSP(9));
+        PrintAndLogEx(INFO, "  10 US = %u SSP (expect 32 or 48) ", US_TO_SSP(10));
+        PrintAndLogEx(INFO, "  94 US = %u SSP (expect 320) ", US_TO_SSP(94));
+        PrintAndLogEx(INFO, "  95 US = %u SSP (expect 320 or 336) ", US_TO_SSP(95));
+        PrintAndLogEx(INFO, "  302 US = %u SSP (expect 1024) ", US_TO_SSP(302));
+
+        PrintAndLogEx(INFO, "  4949000 US = %u SSP ", US_TO_SSP(4949000));
+
+        PrintAndLogEx(NORMAL, "");
+
+        PrintAndLogEx(INFO, "SSP CLK 3.39MHz to US conversions");
+        PrintAndLogEx(INFO, "  32 SSP = %u US (expext 9 or 10) " _GREEN_("ok"), SSP_TO_US(32));
+        PrintAndLogEx(INFO, " 320 SSP = %u US (expext 94 or 95) " _GREEN_("ok"), SSP_TO_US(320));
+        PrintAndLogEx(INFO, "1024 SSP = %u US (expext 302) " _GREEN_("ok"), SSP_TO_US(1024));
+        PrintAndLogEx(NORMAL, "");
+
+        PrintAndLogEx(INFO, "ETU to SSP CLK 3.39MHz conversions");
+        PrintAndLogEx(INFO, "   1 ETU = %u SSP (expect 32) " _GREEN_("ok"), ETU_TO_SSP(1));
+        PrintAndLogEx(INFO, "  10 ETU = %u SSP (expect 320) " _GREEN_("ok"), ETU_TO_SSP(10));
+        PrintAndLogEx(INFO, "  32 ETU = %u SSP (expect 1024) " _GREEN_("ok"), ETU_TO_SSP(32));
+        PrintAndLogEx(NORMAL, "");
+
+        PrintAndLogEx(INFO, "SSP CLK 3.39MHz to ETU conversions");
+        PrintAndLogEx(INFO, "1024 SSP = %u ETU (expect 32) " _GREEN_("ok"), SSP_TO_ETU(1024));
+        PrintAndLogEx(INFO, " 320 SSP = %u ETU (expect 10) " _GREEN_("ok"), SSP_TO_ETU(320));
+        PrintAndLogEx(INFO, "  32 SSP = %u ETU (expect 1) " _GREEN_("ok"), SSP_TO_ETU(32));
+    } else if (etu) {
+
+        PrintAndLogEx(INFO, " %d ETU = %u us ", ETU_TO_US(etu));
+        PrintAndLogEx(INFO, " %d ETU = %u SSP ", ETU_TO_SSP(etu));
+    } else if (us) {
+        PrintAndLogEx(INFO, " %d us = %u ETU ", US_TO_ETU(us));
+        PrintAndLogEx(INFO, " %d us = %u SSP ", US_TO_SSP(us));
+    }
+
+    return PM3_SUCCESS;
+}
+
 static command_t CommandTable[] = {
     {"help",    CmdHelp,            AlwaysAvailable, "This help"},
     {"lcr",     CmdAnalyseLCR,      AlwaysAvailable, "Generate final byte for XOR LRC"},
@@ -1082,7 +1166,8 @@ static command_t CommandTable[] = {
     {"nuid",    CmdAnalyseNuid,     AlwaysAvailable, "create NUID from 7byte UID"},
     {"demodbuff", CmdAnalyseDemodBuffer, AlwaysAvailable, "Load binary string to demodbuffer"},
     {"freq",    CmdAnalyseFreq,     AlwaysAvailable, "Calc wave lengths"},
-    {"foo",    CmdAnalyseFoo,     AlwaysAvailable, "muxer"},
+    {"foo",     CmdAnalyseFoo,      AlwaysAvailable, "muxer"},
+    {"units",   CmdAnalyseUnits,    AlwaysAvailable, "convert ETU <> US <> SSP_CLK (3.39MHz)"},
     {NULL, NULL, NULL, NULL}
 };
 

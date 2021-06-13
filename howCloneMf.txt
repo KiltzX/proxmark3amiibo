@@ -1,0 +1,9 @@
+hf search
+hf mf nested --1k --blk 0 -a -k FFFFFFFFFFFF --dump
+hf mf dump
+
+#Change card
+hf search
+hf mf csetuid -u UID -a ATQA -s SAK
+hf mf restore
+

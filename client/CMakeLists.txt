@@ -220,7 +220,7 @@ set (TARGET_SOURCES
         ${PM3_ROOT}/client/src/mifare/mifare4.c
         ${PM3_ROOT}/client/src/mifare/mifaredefault.c
         ${PM3_ROOT}/client/src/mifare/mifarehost.c
-        ${PM3_ROOT}/client/src/mifare/ndef.c
+        ${PM3_ROOT}/client/src/nfc/ndef.c
         ${PM3_ROOT}/client/src/mifare/desfire_crypto.c
         ${PM3_ROOT}/client/src/uart/uart_posix.c
         ${PM3_ROOT}/client/src/uart/uart_win32.c
@@ -237,11 +237,12 @@ set (TARGET_SOURCES
         ${PM3_ROOT}/client/src/cmdhf14b.c
         ${PM3_ROOT}/client/src/cmdhf15.c
         ${PM3_ROOT}/client/src/cmdhfcryptorf.c
-        ${PM3_ROOT}/client/src/cmdhfepa.c
         ${PM3_ROOT}/client/src/cmdhfemrtd.c
+        ${PM3_ROOT}/client/src/cmdhfepa.c
         ${PM3_ROOT}/client/src/cmdhffelica.c
         ${PM3_ROOT}/client/src/cmdhffido.c
         ${PM3_ROOT}/client/src/cmdhficlass.c
+        ${PM3_ROOT}/client/src/cmdhfjooki.c
         ${PM3_ROOT}/client/src/cmdhflegic.c
         ${PM3_ROOT}/client/src/cmdhflist.c
         ${PM3_ROOT}/client/src/cmdhflto.c
@@ -250,7 +251,9 @@ set (TARGET_SOURCES
         ${PM3_ROOT}/client/src/cmdhfmfhard.c
         ${PM3_ROOT}/client/src/cmdhfmfp.c
         ${PM3_ROOT}/client/src/cmdhfmfu.c
+        ${PM3_ROOT}/client/src/cmdhfseos.c
         ${PM3_ROOT}/client/src/cmdhfst.c
+        ${PM3_ROOT}/client/src/cmdhfst25ta.c
         ${PM3_ROOT}/client/src/cmdhfthinfilm.c
         ${PM3_ROOT}/client/src/cmdhftopaz.c
         ${PM3_ROOT}/client/src/cmdhfwaveshare.c
@@ -289,6 +292,7 @@ set (TARGET_SOURCES
         ${PM3_ROOT}/client/src/cmdlfviking.c
         ${PM3_ROOT}/client/src/cmdlfvisa2000.c
         ${PM3_ROOT}/client/src/cmdmain.c
+        ${PM3_ROOT}/client/src/cmdnfc.c
         ${PM3_ROOT}/client/src/cmdparser.c
         ${PM3_ROOT}/client/src/cmdscript.c
         ${PM3_ROOT}/client/src/cmdsmartcard.c
@@ -312,13 +316,13 @@ set (TARGET_SOURCES
         ${PM3_ROOT}/client/src/util.c
         ${PM3_ROOT}/client/src/wiegand_formats.c
         ${PM3_ROOT}/client/src/wiegand_formatutils.c
-        ${CMAKE_BINARY_DIR}/version.c
+        ${CMAKE_BINARY_DIR}/version_pm3.c
         )
 
 add_custom_command(
-    OUTPUT  ${CMAKE_BINARY_DIR}/version.c
-    COMMAND sh ${PM3_ROOT}/tools/mkversion.sh > ${CMAKE_BINARY_DIR}/version.c || perl ${PM3_ROOT}/tools/mkversion.pl > ${CMAKE_BINARY_DIR}/version.c || ${CMAKE_COMMAND} -E copy ${PM3_ROOT}/common/default_version.c ${CMAKE_BINARY_DIR}/version.c
-    DEPENDS ${PM3_ROOT}/common/default_version.c
+    OUTPUT  ${CMAKE_BINARY_DIR}/version_pm3.c
+    COMMAND sh ${PM3_ROOT}/tools/mkversion.sh > ${CMAKE_BINARY_DIR}/version_pm3.c || perl ${PM3_ROOT}/tools/mkversion.pl > ${CMAKE_BINARY_DIR}/version_pm3.c || ${CMAKE_COMMAND} -E copy ${PM3_ROOT}/common/default_version_pm3.c ${CMAKE_BINARY_DIR}/version_pm3.c
+    DEPENDS ${PM3_ROOT}/common/default_version_pm3.c
 )
 
 set(ADDITIONAL_SRC "")

@@ -58,6 +58,7 @@
 #include "util.h"
 #include "string.h"
 #include "iso15693tools.h"
+#include "protocols.h"
 #include "cmd.h"
 #include "appmain.h"
 #include "dbprint.h"
@@ -245,7 +246,7 @@ void CodeIso15693AsTag(uint8_t *cmd, size_t len) {
     ts->buf[++ts->max] = 0x1D;  // 00011101
 
     // data
-    for (int i = 0; i < len; i += 2) {
+    for (size_t i = 0; i < len; i += 2) {
         ts->buf[++ts->max] = encode_4bits[cmd[i] & 0xF];
         ts->buf[++ts->max] = encode_4bits[cmd[i] >> 4];
         ts->buf[++ts->max] = encode_4bits[cmd[i + 1] & 0xF];
@@ -515,7 +516,7 @@ static RAMFUNC int Handle15693SamplesFromTag(uint16_t amplitude, DecodeTag_t *ta
                         tag->shiftReg |= 0x80;
                         tag->bitCount++;
                         if (tag->bitCount == 8) {
-                            tag->output[tag->len] = tag->shiftReg;
+                            tag->output[tag->len] = tag->shiftReg & 0xFF;
                             tag->len++;
 
                             if (tag->len > tag->max_len) {
@@ -540,7 +541,7 @@ static RAMFUNC int Handle15693SamplesFromTag(uint16_t amplitude, DecodeTag_t *ta
                         tag->bitCount++;
 
                         if (tag->bitCount == 8) {
-                            tag->output[tag->len] = tag->shiftReg;
+                            tag->output[tag->len] = (tag->shiftReg & 0xFF);
                             tag->len++;
 
                             if (tag->len > tag->max_len) {
@@ -1444,7 +1445,7 @@ static void BuildIdentifyRequest(uint8_t *cmd) {
     // flags
     cmd[0] = ISO15_REQ_SUBCARRIER_SINGLE | ISO15_REQ_DATARATE_HIGH | ISO15_REQ_INVENTORY | ISO15_REQINV_SLOT1;
     // inventory command code
-    cmd[1] = ISO15_CMD_INVENTORY;
+    cmd[1] = ISO15693_INVENTORY;
     // no mask
     cmd[2] = 0x00;
     // CRC
@@ -1477,7 +1478,7 @@ int SendDataTag(uint8_t *send, int sendlen, bool init, bool speed_fast, uint8_t 
     tosend_t *ts = get_tosend();
     TransmitTo15693Tag(ts->buf, ts->max, &start_time);
 
-    if (tearoff_hook() == PM3_ETEAROFF) { // tearoff occured
+    if (tearoff_hook() == PM3_ETEAROFF) { // tearoff occurred
 
         res = PM3_ETEAROFF;
 
@@ -1580,7 +1581,7 @@ static void DbdecodeIso15693Answer(int len, uint8_t *d) {
 //-----------------------------------------------------------------------------
 // ok
 // parameter is unused !?!
-void ReaderIso15693(uint32_t parameter) {
+void ReaderIso15693(uint32_t parameter, iso15_card_select_t *p_card) {
 
     LED_A_ON();
     set_tracing(true);
@@ -1598,11 +1599,11 @@ void ReaderIso15693(uint32_t parameter) {
     uint32_t eof_time;
     int recvlen = SendDataTag(cmd, sizeof(cmd), true, true, answer, ISO15693_MAX_RESPONSE_LENGTH, start_time, ISO15693_READER_TIMEOUT, &eof_time);
 
-    if (recvlen == PM3_ETEAROFF) { // tearoff occured
+    if (recvlen == PM3_ETEAROFF) { // tearoff occurred
         reply_mix(CMD_ACK, recvlen, 0, 0, NULL, 0);
     } else {
 
-        start_time = eof_time + DELAY_ISO15693_VICC_TO_VCD_READER;
+        //start_time = eof_time + DELAY_ISO15693_VICC_TO_VCD_READER;
 
         // we should do a better check than this
         if (recvlen >= 12) {
@@ -1615,6 +1616,11 @@ void ReaderIso15693(uint32_t parameter) {
             uid[5] = answer[4];
             uid[6] = answer[3];
             uid[7] = answer[2];
+
+            if (p_card != NULL) {
+                memcpy(p_card->uid, uid, 8);
+                p_card->uidlen = 8;
+            }
 
             if (DBGLEVEL >= DBG_EXTENDED) {
                 Dbprintf("[+] UID = %02X%02X%02X%02X%02X%02X%02X%02X",
@@ -1635,6 +1641,7 @@ void ReaderIso15693(uint32_t parameter) {
                 Dbhexdump(recvlen, answer, true);
             }
         } else {
+            p_card->uidlen = 0;
             DbpString("Failed to select card");
             reply_mix(CMD_ACK, 0, 0, 0, NULL, 0);
         }
@@ -1686,7 +1693,7 @@ void SimTagIso15693(uint8_t *uid) {
     enum { NO_FIELD, IDLE, ACTIVATED, SELECTED, HALTED } chip_state = NO_FIELD;
 
     bool button_pressed = false;
-    int vHf = 0; // in mV
+    int vHf; // in mV
 
     bool exit_loop = false;
     while (exit_loop == false) {
@@ -1719,12 +1726,11 @@ void SimTagIso15693(uint8_t *uid) {
         int cmd_len = GetIso15693CommandFromReader(cmd, sizeof(cmd), &reader_eof_time);
         if (cmd_len < 0) {
             button_pressed = true;
-            exit_loop = true;
             break;
         }
 
         // TODO: check more flags
-        if ((cmd_len >= 5) && (cmd[0] & ISO15_REQ_INVENTORY) && (cmd[1] == ISO15_CMD_INVENTORY)) {
+        if ((cmd_len >= 5) && (cmd[0] & ISO15_REQ_INVENTORY) && (cmd[1] == ISO15693_INVENTORY)) {
             bool slow = !(cmd[0] & ISO15_REQ_DATARATE_HIGH);
             uint32_t response_time = reader_eof_time + DELAY_ISO15693_VCD_TO_VICC_SIM;
 
@@ -1757,7 +1763,7 @@ void SimTagIso15693(uint8_t *uid) {
         }
 
         // GET_SYSTEM_INFO
-        if ((cmd[1] == ISO15_CMD_SYSINFO)) {
+        if ((cmd[1] == ISO15693_GET_SYSTEM_INFO)) {
             bool slow = !(cmd[0] & ISO15_REQ_DATARATE_HIGH);
             uint32_t response_time = reader_eof_time + DELAY_ISO15693_VCD_TO_VICC_SIM;
 
@@ -1795,7 +1801,7 @@ void SimTagIso15693(uint8_t *uid) {
         }
 
         // READ_BLOCK
-        if ((cmd[1] == ISO15_CMD_READ)) {
+        if ((cmd[1] == ISO15693_READBLOCK)) {
             bool slow = !(cmd[0] & ISO15_REQ_DATARATE_HIGH);
             uint32_t response_time = reader_eof_time + DELAY_ISO15693_VCD_TO_VICC_SIM;
 
@@ -1839,7 +1845,7 @@ void BruteforceIso15693Afi(uint32_t speed) {
     // Tags should respond wihtout AFI and with AFI=0 even when AFI is active
 
     data[0] = ISO15_REQ_SUBCARRIER_SINGLE | ISO15_REQ_DATARATE_HIGH | ISO15_REQ_INVENTORY | ISO15_REQINV_SLOT1;
-    data[1] = ISO15_CMD_INVENTORY;
+    data[1] = ISO15693_INVENTORY;
     data[2] = 0; // AFI
     AddCrc15(data, 3);
 
@@ -1854,7 +1860,7 @@ void BruteforceIso15693Afi(uint32_t speed) {
         Dbprintf("NoAFI UID = %s", iso15693_sprintUID(NULL, recv + 2));
     } else {
         DbpString("Failed to select card");
-        reply_ng(CMD_ACK, PM3_ESOFT, NULL, 0);
+        reply_ng(CMD_HF_ISO15693_FINDAFI, PM3_ESOFT, NULL, 0);
         switch_off();
         return;
     }
@@ -1882,10 +1888,8 @@ void BruteforceIso15693Afi(uint32_t speed) {
             Dbprintf("AFI = %i  UID = %s", i, iso15693_sprintUID(NULL, recv + 2));
         }
 
-        aborted = BUTTON_PRESS();
-
+        aborted = BUTTON_PRESS() && data_available();
         if (aborted) {
-            DbpString("button pressed, aborting..");
             break;
         }
     }
@@ -1894,9 +1898,9 @@ void BruteforceIso15693Afi(uint32_t speed) {
     switch_off();
 
     if (aborted) {
-        reply_ng(CMD_ACK, PM3_EOPABORTED, NULL, 0);
+        reply_ng(CMD_HF_ISO15693_FINDAFI, PM3_EOPABORTED, NULL, 0);
     } else {
-        reply_ng(CMD_ACK, PM3_SUCCESS, NULL, 0);
+        reply_ng(CMD_HF_ISO15693_FINDAFI, PM3_SUCCESS, NULL, 0);
     }
 }
 
@@ -1912,13 +1916,13 @@ void DirectTag15693Command(uint32_t datalen, uint32_t speed, uint32_t recv, uint
     bool request_answer = false;
 
     switch (data[1]) {
-        case ISO15_CMD_WRITE:
-        case ISO15_CMD_LOCK:
-        case ISO15_CMD_WRITEMULTI:
-        case ISO15_CMD_WRITEAFI:
-        case ISO15_CMD_LOCKAFI:
-        case ISO15_CMD_WRITEDSFID:
-        case ISO15_CMD_LOCKDSFID:
+        case ISO15693_WRITEBLOCK:
+        case ISO15693_LOCKBLOCK:
+        case ISO15693_WRITE_MULTI_BLOCK:
+        case ISO15693_WRITE_AFI:
+        case ISO15693_LOCK_AFI:
+        case ISO15693_WRITE_DSFID:
+        case ISO15693_LOCK_DSFID:
             timeout = ISO15693_READER_TIMEOUT_WRITE;
             request_answer = data[0] & ISO15_REQ_OPTION;
             break;
@@ -1929,7 +1933,7 @@ void DirectTag15693Command(uint32_t datalen, uint32_t speed, uint32_t recv, uint
     uint32_t start_time = 0;
     int recvlen = SendDataTag(data, datalen, true, speed, (recv ? recvbuf : NULL), sizeof(recvbuf), start_time, timeout, &eof_time);
 
-    if (recvlen == PM3_ETEAROFF) { // tearoff occured
+    if (recvlen == PM3_ETEAROFF) { // tearoff occurred
         reply_mix(CMD_ACK, recvlen, 0, 0, NULL, 0);
     } else {
 
@@ -2057,13 +2061,7 @@ void LockPassSlixIso15693(uint32_t pass_id, uint32_t password) {
     }
 
     Dbprintf("LockPass: Finishing");
-    FpgaWriteConfWord(FPGA_MAJOR_MODE_OFF);
-
     cmd_send(CMD_ACK, recvlen, 0, 0, recvbuf, recvlen);
-    LED_A_OFF();
-    LED_B_OFF();
-    LED_C_OFF();
-    LED_D_OFF();
 }
 */
 
@@ -2078,10 +2076,10 @@ void SetTag15693Uid(uint8_t *uid) {
     LED_A_ON();
 
     uint8_t cmd[4][9] = {
-        {ISO15_REQ_DATARATE_HIGH, ISO15_CMD_WRITE, 0x3e, 0x00, 0x00, 0x00, 0x00},
-        {ISO15_REQ_DATARATE_HIGH, ISO15_CMD_WRITE, 0x3f, 0x69, 0x96, 0x00, 0x00},
-        {ISO15_REQ_DATARATE_HIGH, ISO15_CMD_WRITE, 0x38},
-        {ISO15_REQ_DATARATE_HIGH, ISO15_CMD_WRITE, 0x39}
+        {ISO15_REQ_DATARATE_HIGH, ISO15693_WRITEBLOCK, 0x3e, 0x00, 0x00, 0x00, 0x00},
+        {ISO15_REQ_DATARATE_HIGH, ISO15693_WRITEBLOCK, 0x3f, 0x69, 0x96, 0x00, 0x00},
+        {ISO15_REQ_DATARATE_HIGH, ISO15693_WRITEBLOCK, 0x38},
+        {ISO15_REQ_DATARATE_HIGH, ISO15693_WRITEBLOCK, 0x39}
     };
 
     // Command 3 : 02 21 38 u8u7u6u5 (where uX = uid byte X)
@@ -2113,3 +2111,129 @@ void SetTag15693Uid(uint8_t *uid) {
     reply_ng(CMD_HF_ISO15693_CSETUID, PM3_SUCCESS, NULL, 0);
     switch_off();
 }
+
+static void init_password_15693_slixl(uint8_t *buffer, uint8_t *pwd, uint8_t *rnd) {
+    memcpy(buffer, pwd, 4);
+    if (rnd) {
+        buffer[0] ^= rnd[0];
+        buffer[1] ^= rnd[1];
+        buffer[2] ^= rnd[0];
+        buffer[3] ^= rnd[1];
+    }
+}
+
+static bool get_rnd_15693_slixl(uint32_t start_time, uint32_t *eof_time, uint8_t *rnd) {
+    // 0x04, == NXP from manufacture id list.
+    uint8_t c[] = {ISO15_REQ_DATARATE_HIGH, ISO15693_GET_RANDOM_NUMBER, 0x04, 0x00, 0x00 };
+    AddCrc15(c, 3);
+
+    uint8_t recvbuf[ISO15693_MAX_RESPONSE_LENGTH];
+    int recvlen = SendDataTag(c, sizeof(c), false, true, recvbuf, sizeof(recvbuf), start_time, ISO15693_READER_TIMEOUT_WRITE, eof_time);
+    if (recvlen != 5) {
+        return false;
+    }
+
+    if (rnd) {
+        memcpy(rnd, &recvbuf[1], 2);
+    }
+    return true;
+}
+
+static uint32_t set_pass_15693_slixl(uint32_t start_time, uint32_t *eof_time, uint8_t pass_id, uint8_t *password) {
+    uint8_t rnd[2];
+    if (get_rnd_15693_slixl(start_time, eof_time, rnd) == false) {
+        return PM3_ETIMEOUT;
+    }
+
+    // 0x04, == NXP from manufacture id list.
+    uint8_t c[] = {ISO15_REQ_DATARATE_HIGH, ISO15693_SET_PASSWORD, 0x04, pass_id, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+    init_password_15693_slixl(&c[4], password, rnd);
+    AddCrc15(c, 8);
+
+    start_time = *eof_time + DELAY_ISO15693_VICC_TO_VCD_READER;
+    uint8_t recvbuf[ISO15693_MAX_RESPONSE_LENGTH];
+    int recvlen = SendDataTag(c, sizeof(c), false, true, recvbuf, sizeof(recvbuf), start_time, ISO15693_READER_TIMEOUT_WRITE, eof_time);
+    if (recvlen != 3) {
+        return PM3_EWRONGANSWER;
+    }
+
+    return PM3_SUCCESS;
+}
+
+/*
+static uint32_t enable_privacy_15693_slixl(uint32_t start_time, uint32_t *eof_time, uint8_t *uid, uint8_t pass_id, uint8_t *password) {
+	uint8_t rnd[2];
+    if (get_rnd_15693_slixl(start_time, eof_time, rnd) == false) {
+		return PM3_ETIMEOUT;
+	}
+
+	uint8_t c[] = {ISO15_REQ_DATARATE_HIGH | ISO15_REQ_ADDRESS, ISO15693_ENABLE_PRIVACY, pass_id, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+	memcpy(&c[3], uid, 8);
+	init_password_15693_slixl(&c[11], password, rnd);
+	AddCrc15(c, 15);
+
+	start_time = *eof_time + DELAY_ISO15693_VICC_TO_VCD_READER;
+	uint8_t recvbuf[ISO15693_MAX_RESPONSE_LENGTH];
+	int recvlen = SendDataTag(c, sizeof(c), false, true, recvbuf, sizeof(recvbuf), start_time, ISO15693_READER_TIMEOUT_WRITE, eof_time);
+	if (recvlen != 3) {
+		return PM3_EWRONGANSWER;
+	}
+	return PM3_SUCCESS;
+}
+
+static uint32_t write_password_15693_slixl(uint32_t start_time, uint32_t *eof_time, uint8_t *uid, uint8_t pass_id, uint8_t *password) {
+	uint8_t rnd[2];
+    if (get_rnd_15693_slixl(start_time, eof_time, rnd) == false) {
+		return PM3_ETIMEOUT;
+	}
+
+	uint8_t c[] = {ISO15_REQ_DATARATE_HIGH | ISO15_REQ_ADDRESS, ISO15693_WRITE_PASSWORD, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+	memcpy(&c[3], uid, 8);
+	c[11] = pass_id;
+	init_password_15693_slixl(&c[12], password, NULL);
+	AddCrc15(c, 16);
+
+	start_time = *eof_time + DELAY_ISO15693_VICC_TO_VCD_READER;
+
+	uint8_t recvbuf[ISO15693_MAX_RESPONSE_LENGTH];
+	int recvlen = SendDataTag(c, sizeof(c), false, true, recvbuf, sizeof(recvbuf), start_time, ISO15693_READER_TIMEOUT_WRITE, eof_time);
+	if (recvlen != 3) {
+		return PM3_EWRONGANSWER;
+	}
+	return PM3_SUCCESS;
+}
+
+static uint32_t destroy_15693_slixl(uint32_t start_time, uint32_t *eof_time, uint8_t *uid, uint8_t *password) {
+
+	uint8_t rnd[2];
+    if (get_rnd_15693_slixl(start_time, eof_time, rnd) == false) {
+		return PM3_ETIMEOUT;
+	}
+
+	uint8_t c[] = {ISO15_REQ_DATARATE_HIGH | ISO15_REQ_ADDRESS, ISO15693_DESTROY, ISO15693_ENABLE_PRIVACY, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+	memcpy(&c[3], uid, 8);
+	init_password_15693_slixl(&c[11], password, rnd);
+	AddCrc15(c, 15);
+
+	start_time = *eof_time + DELAY_ISO15693_VICC_TO_VCD_READER;
+	uint8_t recvbuf[ISO15693_MAX_RESPONSE_LENGTH];
+	int recvlen = SendDataTag(c, sizeof(c), false, true, recvbuf, sizeof(recvbuf), start_time, ISO15693_READER_TIMEOUT_WRITE, eof_time);
+	if (recvlen != 3) {
+		return PM3_EWRONGANSWER;
+	}
+	return PM3_SUCCESS;
+}
+
+*/
+void DisablePrivacySlixLIso15693(uint8_t *password) {
+    LED_D_ON();
+    Iso15693InitReader();
+    StartCountSspClk();
+    uint32_t start_time = 0, eof_time = 0;
+    // 4 == pass id.
+    int res = set_pass_15693_slixl(start_time, &eof_time, 0x10, password);
+    reply_ng(CMD_HF_ISO15693_SLIX_L_DISABLE_PRIVACY, res, NULL, 0);
+    switch_off();
+}
+
+

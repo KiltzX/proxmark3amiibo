@@ -49,6 +49,7 @@
 #include "commonutil.h"
 #include "crc16.h"
 
+
 #ifdef WITH_LCD
 #include "LCD_disabled.h"
 #endif
@@ -69,12 +70,12 @@
 int DBGLEVEL = DBG_ERROR;
 uint8_t g_trigger = 0;
 bool g_hf_field_active = false;
-extern uint32_t _stack_start, _stack_end;
+extern uint32_t _stack_start[], _stack_end[];
 struct common_area common_area __attribute__((section(".commonarea")));
 static int button_status = BUTTON_NO_CLICK;
 static bool allow_send_wtx = false;
-static uint16_t tearoff_delay_us = 0;
-static bool tearoff_enabled = false;
+uint16_t tearoff_delay_us = 0;
+bool tearoff_enabled = false;
 
 int tearoff_hook(void) {
     if (tearoff_enabled) {
@@ -194,7 +195,7 @@ static void MeasureAntennaTuning(void) {
             payload.v_lf134 = adcval; // voltage at 134kHz
 
         if (i == sc->divisor)
-            payload.v_lfconf = adcval; // voltage at `lf config q`
+            payload.v_lfconf = adcval; // voltage at `lf config --divisor`
 
         payload.results[i] = adcval >> 9; // scale int to fit in byte for graphing purposes
 
@@ -239,10 +240,9 @@ static uint32_t MeasureAntennaTuningLfData(void) {
 }
 
 void print_stack_usage(void) {
-    // pointer arithmetic is times 4. (two shifts to the left)
-    for (uint32_t *p = &_stack_start; ; ++p) {
+    for (uint32_t *p = _stack_start; ; ++p) {
         if (*p != 0xdeadbeef) {
-            Dbprintf("  Max stack usage.........%d / %d bytes", (&_stack_end - p) << 2, (&_stack_end - &_stack_start) << 2);
+            Dbprintf("  Max stack usage......... %d / %d bytes", (uint32_t)_stack_end - (uint32_t)p, (uint32_t)_stack_end - (uint32_t)_stack_start);
             break;
         }
     }
@@ -256,9 +256,9 @@ void ReadMem(int addr) {
 
 /* osimage version information is linked in, cf commonutil.h */
 /* bootrom version information is pointed to from _bootphase1_version_pointer */
-extern char *_bootphase1_version_pointer, _flash_start, _flash_end, __data_src_start__;
+extern uint32_t _bootphase1_version_pointer[], _flash_start[], _flash_end[], __data_src_start__[];
 #ifdef WITH_NO_COMPRESSION
-extern char *_bootrom_end, _bootrom_start, __os_size__;
+extern uint32_t _bootrom_end[], _bootrom_start[], __os_size__[];
 #endif
 static void SendVersion(void) {
     char temp[PM3_CMD_DATA_SIZE - 12]; /* Limited data payload in USB packets */
@@ -268,11 +268,13 @@ static void SendVersion(void) {
      * symbol _bootphase1_version_pointer, perform slight sanity checks on the
      * pointer, then use it.
      */
-    char *bootrom_version = *(char **)&_bootphase1_version_pointer;
+    // dummy casting to avoid "dereferencing type-punned pointer breaking strict-aliasing rules" errors
+    uint32_t bootrom_version_ptr = (uint32_t)_bootphase1_version_pointer;
+    char *bootrom_version = *(char **)(bootrom_version_ptr);
 
     strncat(VersionString, " [ "_YELLOW_("ARM")" ]\n", sizeof(VersionString) - strlen(VersionString) - 1);
 
-    if (bootrom_version < &_flash_start || bootrom_version >= &_flash_end) {
+    if ((uint32_t)bootrom_version < (uint32_t)_flash_start || (uint32_t)bootrom_version >= (uint32_t)_flash_end) {
         strcat(VersionString, "bootrom version information appears invalid\n");
     } else {
         FormatVersionInformation(temp, sizeof(temp), "  bootrom: ", bootrom_version);
@@ -300,7 +302,7 @@ static void SendVersion(void) {
     }
 #ifndef WITH_NO_COMPRESSION
     // Send Chip ID and used flash memory
-    uint32_t text_and_rodata_section_size = (uint32_t)&__data_src_start__ - (uint32_t)&_flash_start;
+    uint32_t text_and_rodata_section_size = (uint32_t)__data_src_start__ - (uint32_t)_flash_start;
     uint32_t compressed_data_section_size = common_area.arg1;
 #endif
 
@@ -314,7 +316,7 @@ static void SendVersion(void) {
     struct p payload;
     payload.id = *(AT91C_DBGU_CIDR);
 #ifdef WITH_NO_COMPRESSION
-    payload.section_size = (uint32_t)&_bootrom_end - (uint32_t)&_bootrom_start + (uint32_t)&__os_size__;
+    payload.section_size = (uint32_t)_bootrom_end - (uint32_t)_bootrom_start + (uint32_t)__os_size__;
 #else
     payload.section_size = text_and_rodata_section_size + compressed_data_section_size;
 #endif
@@ -336,22 +338,22 @@ static void print_debug_level(void) {
     char dbglvlstr[20] = {0};
     switch (DBGLEVEL) {
         case DBG_NONE:
-            sprintf(dbglvlstr, "NONE");
+            sprintf(dbglvlstr, "none");
             break;
         case DBG_ERROR:
-            sprintf(dbglvlstr, "ERROR");
+            sprintf(dbglvlstr, "error");
             break;
         case DBG_INFO:
-            sprintf(dbglvlstr, "INFO");
+            sprintf(dbglvlstr, "info");
             break;
         case DBG_DEBUG:
-            sprintf(dbglvlstr, "DEBUG");
+            sprintf(dbglvlstr, "debug");
             break;
         case DBG_EXTENDED:
-            sprintf(dbglvlstr, "EXTENDED");
+            sprintf(dbglvlstr, "extended");
             break;
     }
-    Dbprintf("  DBGLEVEL................%d ( " _YELLOW_("%s")" )", DBGLEVEL, dbglvlstr);
+    Dbprintf("  Debug log level......... %d ( " _YELLOW_("%s")" )", DBGLEVEL, dbglvlstr);
 }
 
 // measure the Connection Speed by sending SpeedTestBufferSize bytes to client and measuring the elapsed time.
@@ -375,9 +377,9 @@ static void printConnSpeed(void) {
     }
     LED_B_OFF();
 
-    Dbprintf("  Time elapsed............%dms", delta_time);
-    Dbprintf("  Bytes transferred.......%d", bytes_transferred);
-    Dbprintf("  Transfer Speed PM3 -> Client = " _YELLOW_("%d") " bytes/s", 1000 * bytes_transferred / delta_time);
+    Dbprintf("  Time elapsed................... %dms", delta_time);
+    Dbprintf("  Bytes transferred.............. %d", bytes_transferred);
+    Dbprintf("  Transfer Speed PM3 -> Client... " _YELLOW_("%d") " bytes/s", 1000 * bytes_transferred / delta_time);
 }
 
 /**
@@ -406,11 +408,11 @@ static void SendStatus(void) {
     print_debug_level();
 
     tosend_t *ts = get_tosend();
-    Dbprintf("  ToSendMax...............%d", ts->max);
-    Dbprintf("  ToSend BUFFERSIZE.......%d", TOSEND_BUFFER_SIZE);
+    Dbprintf("  ToSendMax............... %d", ts->max);
+    Dbprintf("  ToSend BUFFERSIZE....... %d", TOSEND_BUFFER_SIZE);
     while ((AT91C_BASE_PMC->PMC_MCFR & AT91C_CKGR_MAINRDY) == 0);       // Wait for MAINF value to become available...
     uint16_t mainf = AT91C_BASE_PMC->PMC_MCFR & AT91C_CKGR_MAINF;       // Get # main clocks within 16 slow clocks
-    Dbprintf("  Slow clock..............%d Hz", (16 * MAINCK) / mainf);
+    Dbprintf("  Slow clock.............. %d Hz", (16 * MAINCK) / mainf);
     uint32_t delta_time = 0;
     uint32_t start_time = GetTickCount();
 #define SLCK_CHECK_MS 50
@@ -428,7 +430,7 @@ static void SendStatus(void) {
 #ifdef WITH_FLASH
     Flashmem_print_info();
 #endif
-
+    DbpString("");
     reply_ng(CMD_STATUS, PM3_SUCCESS, NULL, 0);
 }
 
@@ -940,7 +942,7 @@ static void PacketReceived(PacketCommandNG *packet) {
             } PACKED;
             struct p *payload = (struct p *)packet->data.asBytes;
             // length, start gap, led control
-            SimulateTagLowFrequency(payload->len, payload->gap, 1);
+            SimulateTagLowFrequency(payload->len, payload->gap, true);
             reply_ng(CMD_LF_SIMULATE, PM3_EOPABORTED, NULL, 0);
             LED_A_OFF();
             break;
@@ -1084,7 +1086,7 @@ static void PacketReceived(PacketCommandNG *packet) {
             break;
         }
         case CMD_LF_HITAG_SIMULATE: { // Simulate Hitag tag, args = memory content
-            SimulateHitag2((bool)packet->oldarg[0], packet->data.asBytes);
+            SimulateHitag2();
             break;
         }
         case CMD_LF_HITAG_READER: { // Reader for Hitag tags, args = type and function
@@ -1109,6 +1111,18 @@ static void PacketReceived(PacketCommandNG *packet) {
             } else {
                 WriterHitag((hitag_function)packet->oldarg[0], (hitag_data *)packet->data.asBytes, packet->oldarg[2]);
             }
+            break;
+        }
+        case CMD_LF_HITAG_ELOAD: {
+            /*
+            struct p {
+                uint16_t len;
+                uint8_t *data;
+            } PACKED;
+            struct p *payload = (struct p *) packet->data.asBytes;
+            uint8_t *mem = BigBuf_get_EM_addr();
+            memcpy((uint8_t *)mem.sectors, payload->data, payload->len);
+            */
             break;
         }
 #endif
@@ -1220,7 +1234,7 @@ static void PacketReceived(PacketCommandNG *packet) {
             break;
         }
         case CMD_HF_ISO15693_READER: {
-            ReaderIso15693(packet->oldarg[0]);
+            ReaderIso15693(packet->oldarg[0], NULL);
             break;
         }
         case CMD_HF_ISO15693_SIMULATE: {
@@ -1239,6 +1253,15 @@ static void PacketReceived(PacketCommandNG *packet) {
             SetTag15693Uid(payload->uid);
             break;
         }
+        case CMD_HF_ISO15693_SLIX_L_DISABLE_PRIVACY: {
+            struct p {
+                uint8_t pwd[4];
+            } PACKED;
+            struct p *payload = (struct p *) packet->data.asBytes;
+            DisablePrivacySlixLIso15693(payload->pwd);
+            break;
+        }
+
 #endif
 
 #ifdef WITH_LEGICRF
@@ -1296,7 +1319,8 @@ static void PacketReceived(PacketCommandNG *packet) {
             break;
         }
         case CMD_HF_ISO14443B_COMMAND: {
-            SendRawCommand14443B_Ex(packet);
+            iso14b_raw_cmd_t *payload = (iso14b_raw_cmd_t *)packet->data.asBytes;
+            SendRawCommand14443B_Ex(payload);
             break;
         }
         case CMD_HF_CRYPTORF_SIM : {
@@ -1311,12 +1335,20 @@ static void PacketReceived(PacketCommandNG *packet) {
             break;
         }
         case CMD_HF_FELICALITE_SIMULATE: {
-            felica_sim_lite(packet->oldarg[0]);
+            struct p {
+                uint8_t uid[8];
+            } PACKED;
+            struct p *payload = (struct p *) packet->data.asBytes;
+            felica_sim_lite(payload->uid);
             break;
         }
         case CMD_HF_FELICA_SNIFF: {
-            felica_sniff(packet->oldarg[0], packet->oldarg[1]);
-            reply_ng(CMD_HF_FELICA_SNIFF, PM3_SUCCESS, NULL, 0);
+            struct p {
+                uint32_t samples;
+                uint32_t triggers;
+            } PACKED;
+            struct p *payload = (struct p *) packet->data.asBytes;
+            felica_sniff(payload->samples, payload->triggers);
             break;
         }
         case CMD_HF_FELICALITE_DUMP: {
@@ -1542,11 +1574,6 @@ static void PacketReceived(PacketCommandNG *packet) {
             MifareGen3Freez();
             break;
         }
-        // mifare sniffer
-//        case CMD_HF_MIFARE_SNIFF: {
-//            SniffMifare(packet->oldarg[0]);
-//            break;
-//        }
         case CMD_HF_MIFARE_PERSONALIZE_UID: {
             struct p {
                 uint8_t keytype;
@@ -1655,7 +1682,13 @@ static void PacketReceived(PacketCommandNG *packet) {
         case CMD_HF_ICLASS_EML_MEMSET: {
             //iceman, should call FPGADOWNLOAD before, since it corrupts BigBuf
             FpgaDownloadAndGo(FPGA_BITSTREAM_HF);
-            emlSet(packet->data.asBytes, packet->oldarg[0], packet->oldarg[1]);
+            struct p {
+                uint16_t offset;
+                uint16_t len;
+                uint8_t data[];
+            } PACKED;
+            struct p *payload = (struct p *) packet->data.asBytes;
+            emlSet(payload->data, payload->offset, payload->len);
             break;
         }
         case CMD_HF_ICLASS_WRITEBL: {
@@ -1667,7 +1700,7 @@ static void PacketReceived(PacketCommandNG *packet) {
             break;
         }
         case CMD_HF_ICLASS_CHKKEYS: {
-            iClass_Authentication_fast(packet->oldarg[0], packet->oldarg[1], packet->data.asBytes);
+            iClass_Authentication_fast((iclass_chk_t *)packet->data.asBytes);
             break;
         }
         case CMD_HF_ICLASS_DUMP: {
@@ -1725,7 +1758,7 @@ static void PacketReceived(PacketCommandNG *packet) {
             break;
         }
         case CMD_SMART_RAW: {
-            SmartCardRaw(packet->oldarg[0], packet->oldarg[1], packet->data.asBytes);
+            SmartCardRaw((smart_card_raw_t *)packet->data.asBytes);
             break;
         }
         case CMD_SMART_UPLOAD: {
@@ -2048,7 +2081,7 @@ static void PacketReceived(PacketCommandNG *packet) {
             break;
         }
         case CMD_SPIFFS_PRINT_TREE: {
-            rdv40_spiffs_safe_print_tree(false);
+            rdv40_spiffs_safe_print_tree();
             break;
         }
         case CMD_SPIFFS_PRINT_FSINFO: {
@@ -2078,7 +2111,7 @@ static void PacketReceived(PacketCommandNG *packet) {
                     Dbprintf("transfer to client failed ::  | bytes between %d - %d (%d) | result: %d", i, i + len, len, result);
             }
             // Trigger a finish downloading signal with an ACK frame
-            reply_mix(CMD_ACK, 1, 0, 0, 0, 0);
+            reply_ng(CMD_SPIFFS_DOWNLOAD, PM3_SUCCESS, NULL, 0);
             LED_B_OFF();
             break;
         }
@@ -2087,78 +2120,94 @@ static void PacketReceived(PacketCommandNG *packet) {
             uint8_t filename[32];
             uint8_t *pfilename = packet->data.asBytes;
             memcpy(filename, pfilename, SPIFFS_OBJ_NAME_LEN);
-            if (DBGLEVEL >= DBG_DEBUG) Dbprintf("Filename received for spiffs STAT : %s", filename);
+            if (DBGLEVEL >= DBG_DEBUG) {
+                Dbprintf("Filename received for spiffs STAT : %s", filename);
+            }
+
             int changed = rdv40_spiffs_lazy_mount();
             uint32_t size = size_in_spiffs((char *)filename);
-            if (changed) rdv40_spiffs_lazy_unmount();
-            reply_mix(CMD_ACK, size, 0, 0, 0, 0);
+            if (changed) {
+                rdv40_spiffs_lazy_unmount();
+            }
+
+            reply_ng(CMD_SPIFFS_STAT, PM3_SUCCESS, (uint8_t *)&size, sizeof(uint32_t));
             LED_B_OFF();
             break;
         }
         case CMD_SPIFFS_REMOVE: {
             LED_B_ON();
-            uint8_t filename[32];
-            uint8_t *pfilename = packet->data.asBytes;
-            memcpy(filename, pfilename, SPIFFS_OBJ_NAME_LEN);
-            if (DBGLEVEL >= DBG_DEBUG) Dbprintf("Filename received for spiffs REMOVE : %s", filename);
-            rdv40_spiffs_remove((char *) filename, RDV40_SPIFFS_SAFETY_SAFE);
+
+            struct p {
+                uint8_t len;
+                uint8_t fn[32];
+            } PACKED;
+            struct p *payload = (struct p *) packet->data.asBytes;
+
+            if (DBGLEVEL >= DBG_DEBUG) {
+                Dbprintf("Filename received for spiffs REMOVE : %s", payload->fn);
+            }
+
+            rdv40_spiffs_remove((char *)payload->fn, RDV40_SPIFFS_SAFETY_SAFE);
+            reply_ng(CMD_SPIFFS_REMOVE, PM3_SUCCESS, NULL, 0);
             LED_B_OFF();
             break;
         }
         case CMD_SPIFFS_RENAME: {
             LED_B_ON();
-            uint8_t src[32];
-            uint8_t dest[32];
-            uint8_t *pfilename = packet->data.asBytes;
-            char *token;
-            token = strtok((char *)pfilename, ",");
-            strncpy((char *)src, token, sizeof(src) - 1);
-            token = strtok(NULL, ",");
-            strncpy((char *)dest, token, sizeof(dest) - 1);
+            struct p {
+                uint8_t slen;
+                uint8_t src[32];
+                uint8_t dlen;
+                uint8_t dest[32];
+            } PACKED;
+            struct p *payload = (struct p *) packet->data.asBytes;
+
             if (DBGLEVEL >= DBG_DEBUG) {
-                Dbprintf("Filename received as source for spiffs RENAME : %s", src);
-                Dbprintf("Filename received as destination for spiffs RENAME : %s", dest);
+                Dbprintf("SPIFFS RENAME");
+                Dbprintf("Source........ %s", payload->src);
+                Dbprintf("Destination... %s", payload->dest);
             }
-            rdv40_spiffs_rename((char *) src, (char *)dest, RDV40_SPIFFS_SAFETY_SAFE);
+            rdv40_spiffs_rename((char *)payload->src, (char *)payload->dest, RDV40_SPIFFS_SAFETY_SAFE);
+            reply_ng(CMD_SPIFFS_RENAME, PM3_SUCCESS, NULL, 0);
             LED_B_OFF();
             break;
         }
         case CMD_SPIFFS_COPY: {
             LED_B_ON();
-            uint8_t src[32];
-            uint8_t dest[32];
-            uint8_t *pfilename = packet->data.asBytes;
-            char *token;
-            token = strtok((char *)pfilename, ",");
-            strncpy((char *)src, token, sizeof(src) - 1);
-            token = strtok(NULL, ",");
-            strncpy((char *)dest, token, sizeof(dest) - 1);
+            struct p {
+                uint8_t slen;
+                uint8_t src[32];
+                uint8_t dlen;
+                uint8_t dest[32];
+            } PACKED;
+            struct p *payload = (struct p *) packet->data.asBytes;
+
             if (DBGLEVEL >= DBG_DEBUG) {
-                Dbprintf("Filename received as source for spiffs COPY : %s", src);
-                Dbprintf("Filename received as destination for spiffs COPY : %s", dest);
+                Dbprintf("SPIFFS COPY");
+                Dbprintf("Source........ %s", payload->src);
+                Dbprintf("Destination... %s", payload->dest);
             }
-            rdv40_spiffs_copy((char *) src, (char *)dest, RDV40_SPIFFS_SAFETY_SAFE);
+            rdv40_spiffs_copy((char *)payload->src, (char *)payload->dest, RDV40_SPIFFS_SAFETY_SAFE);
+            reply_ng(CMD_SPIFFS_COPY, PM3_SUCCESS, NULL, 0);
             LED_B_OFF();
             break;
         }
         case CMD_SPIFFS_WRITE: {
             LED_B_ON();
-            uint8_t filename[32];
-            uint32_t append = packet->oldarg[0];
-            uint32_t size = packet->oldarg[1];
-            uint8_t *data = packet->data.asBytes;
-            uint8_t *pfilename = packet->data.asBytes;
-            memcpy(filename, pfilename, SPIFFS_OBJ_NAME_LEN);
-            data += SPIFFS_OBJ_NAME_LEN;
 
-            if (DBGLEVEL >= DBG_DEBUG) Dbprintf("> Filename received for spiffs WRITE : %s with APPEND SET TO : %d", filename, append);
+            flashmem_write_t *payload = (flashmem_write_t *)packet->data.asBytes;
 
-            if (!append) {
-                rdv40_spiffs_write((char *) filename, (uint8_t *)data, size, RDV40_SPIFFS_SAFETY_SAFE);
-            } else {
-                rdv40_spiffs_append((char *) filename, (uint8_t *)data, size, RDV40_SPIFFS_SAFETY_SAFE);
+            if (DBGLEVEL >= DBG_DEBUG) {
+                Dbprintf("SPIFFS WRITE, dest `%s` with APPEND set to: %c", payload->fn, payload->append ? 'Y' : 'N');
             }
-            reply_mix(CMD_ACK, 1, 0, 0, 0, 0);
+
+            if (payload->append) {
+                rdv40_spiffs_append((char *) payload->fn, payload->data, payload->bytes_in_packet, RDV40_SPIFFS_SAFETY_SAFE);
+            } else {
+                rdv40_spiffs_write((char *) payload->fn, payload->data, payload->bytes_in_packet, RDV40_SPIFFS_SAFETY_SAFE);
+            }
+
+            reply_ng(CMD_SPIFFS_WRITE, PM3_SUCCESS, NULL, 0);
             LED_B_OFF();
             break;
         }
@@ -2177,37 +2226,39 @@ static void PacketReceived(PacketCommandNG *packet) {
         }
         case CMD_FLASHMEM_WRITE: {
             LED_B_ON();
-            uint8_t isok = 0;
-            uint16_t res = 0;
-            uint32_t startidx = packet->oldarg[0];
-            uint16_t len = packet->oldarg[1];
-            uint8_t *data = packet->data.asBytes;
 
-            if (!FlashInit()) {
+            flashmem_old_write_t *payload = (flashmem_old_write_t *)packet->data.asBytes;
+
+            if (FlashInit() == false) {
+                reply_ng(CMD_FLASHMEM_WRITE, PM3_EIO, NULL, 0);
+                LED_B_OFF();
                 break;
             }
 
-            if (startidx == DEFAULT_T55XX_KEYS_OFFSET) {
+            if (payload->startidx == DEFAULT_T55XX_KEYS_OFFSET) {
                 Flash_CheckBusy(BUSY_TIMEOUT);
                 Flash_WriteEnable();
                 Flash_Erase4k(3, 0xC);
-            } else if (startidx ==  DEFAULT_MF_KEYS_OFFSET) {
+            } else if (payload->startidx ==  DEFAULT_MF_KEYS_OFFSET) {
                 Flash_CheckBusy(BUSY_TIMEOUT);
                 Flash_WriteEnable();
                 Flash_Erase4k(3, 0x9);
                 Flash_CheckBusy(BUSY_TIMEOUT);
                 Flash_WriteEnable();
                 Flash_Erase4k(3, 0xA);
-            } else if (startidx == DEFAULT_ICLASS_KEYS_OFFSET) {
+            } else if (payload->startidx == DEFAULT_ICLASS_KEYS_OFFSET) {
                 Flash_CheckBusy(BUSY_TIMEOUT);
                 Flash_WriteEnable();
                 Flash_Erase4k(3, 0xB);
+            } else if (payload->startidx == FLASH_MEM_SIGNATURE_OFFSET) {
+                Flash_CheckBusy(BUSY_TIMEOUT);
+                Flash_WriteEnable();
+                Flash_Erase4k(3, 0xF);
             }
 
-            res = Flash_Write(startidx, data, len);
-            isok = (res == len) ? 1 : 0;
+            uint16_t res = Flash_Write(payload->startidx, payload->data, payload->len);
 
-            reply_mix(CMD_ACK, isok, 0, 0, 0, 0);
+            reply_ng(CMD_FLASHMEM_WRITE, (res == payload->len) ? PM3_SUCCESS : PM3_ESOFT, NULL, 0);
             LED_B_OFF();
             break;
         }
@@ -2239,7 +2290,7 @@ static void PacketReceived(PacketCommandNG *packet) {
             // arg1 = length bytes to transfer
             // arg2 = RFU
 
-            if (!FlashInit()) {
+            if (FlashInit() == false) {
                 break;
             }
 
@@ -2247,7 +2298,7 @@ static void PacketReceived(PacketCommandNG *packet) {
                 size_t len = MIN((numofbytes - i), PM3_CMD_DATA_SIZE);
                 Flash_CheckBusy(BUSY_TIMEOUT);
                 bool isok = Flash_ReadDataCont(startidx + i, mem, len);
-                if (!isok)
+                if (isok == false)
                     Dbprintf("reading flash memory failed ::  | bytes between %d - %d", i, len);
 
                 isok = reply_old(CMD_FLASHMEM_DOWNLOADED, i, len, 0, mem, len);
@@ -2390,7 +2441,7 @@ void  __attribute__((noreturn)) AppMain(void) {
     SpinDelay(100);
     BigBuf_initialize();
 
-    for (uint32_t *p = &_stack_start; p < (uint32_t *)((uintptr_t)&_stack_end - 0x200); ++p) {
+    for (uint32_t *p = _stack_start; p < _stack_end - 0x200; ++p) {
         *p = 0xdeadbeef;
     }
 
@@ -2451,8 +2502,8 @@ void  __attribute__((noreturn)) AppMain(void) {
     for (;;) {
         WDT_HIT();
 
-        if (_stack_start != 0xdeadbeef) {
-            Dbprintf("Stack overflow detected! Please increase stack size, currently %d bytes", (&_stack_end - &_stack_start) << 2);
+        if (*_stack_start != 0xdeadbeef) {
+            Dbprintf("Stack overflow detected! Please increase stack size, currently %d bytes", (uint32_t)_stack_end - (uint32_t)_stack_start);
             Dbprintf("Unplug your device now.");
             while (1);
         }

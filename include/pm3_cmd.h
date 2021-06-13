@@ -145,17 +145,7 @@ typedef struct {
 #define TRACELOG_HDR_LEN        sizeof(tracelog_hdr_t)
 #define TRACELOG_PARITY_LEN(x)  (((x)->data_len - 1) / 8 + 1)
 
-/*
-typedef struct {
-    uint16_t start_gap;
-    uint16_t write_gap;
-    uint16_t write_0;
-    uint16_t write_1;
-    uint16_t read_gap;
-} t55xx_config;
-*/
-
-// Extended to support 1 of 4 timing
+// T55XX - Extended to support 1 of 4 timing
 typedef struct  {
     uint16_t start_gap;
     uint16_t write_gap;
@@ -166,22 +156,14 @@ typedef struct  {
     uint16_t write_3;
 } t55xx_config_t;
 
-// This setup will allow for the 4 downlink modes "m" as well as other items if needed.
+// T55XX - This setup will allow for the 4 downlink modes "m" as well as other items if needed.
 // Given the one struct we can then read/write to flash/client in one go.
 typedef struct {
     t55xx_config_t m[4]; // mode
 } t55xx_configurations_t;
 
-/*typedef struct  {
-    uint16_t start_gap [4];
-    uint16_t write_gap [4];
-    uint16_t write_0   [4];
-    uint16_t write_1   [4];
-    uint16_t write_2   [4];
-    uint16_t write_3   [4];
-    uint16_t read_gap  [4];
-} t55xx_config;
-*/
+
+// Capabilities struct to keep track of what functions was compiled in the device firmware
 typedef struct {
     uint8_t version;
     uint32_t baudrate;
@@ -348,6 +330,16 @@ typedef struct {
     iclass_restore_item_t blocks[];
 } PACKED iclass_restore_req_t;
 
+typedef struct iclass_premac {
+    uint8_t mac[4];
+} PACKED iclass_premac_t;
+
+typedef struct {
+    bool use_credit_key;
+    uint8_t count;
+    iclass_premac_t items[];
+} PACKED iclass_chk_t;
+
 
 // iclass / picopass chip config structures and shared routines
 typedef struct {
@@ -368,14 +360,14 @@ typedef struct {
     uint8_t key_d[8];
     uint8_t key_c[8];
     uint8_t app_issuer_area[8];
-} PACKED picopass_hdr;
+} PACKED picopass_hdr_t;
 
 // iCLASS non-secure mode memory mapping
 typedef struct {
     uint8_t csn[8];
     picopass_conf_block_t conf;
     uint8_t app_issuer_area[8];
-} PACKED picopass_ns_hdr;
+} PACKED picopass_ns_hdr_t;
 
 
 typedef struct {
@@ -383,6 +375,48 @@ typedef struct {
     bool on;
     bool off;
 } PACKED tearoff_params_t;
+
+// when writing to SPIFFS
+typedef struct {
+    bool append : 1;
+    uint16_t bytes_in_packet : 15;
+    uint8_t fnlen;
+    uint8_t fn[32];
+    uint8_t data[];
+} PACKED flashmem_write_t;
+
+// when CMD_FLASHMEM_WRITE old flashmem commands
+typedef struct {
+    uint32_t startidx;
+    uint16_t len;
+    uint8_t data[PM3_CMD_DATA_SIZE - sizeof(uint32_t) - sizeof(uint16_t)];
+} PACKED flashmem_old_write_t;
+
+
+//-----------------------------------------------------------------------------
+// ISO 7618  Smart Card
+//-----------------------------------------------------------------------------
+typedef struct {
+    uint8_t atr_len;
+    uint8_t atr[50];
+} PACKED smart_card_atr_t;
+
+typedef enum SMARTCARD_COMMAND {
+    SC_CONNECT = (1 << 0),
+    SC_NO_DISCONNECT = (1 << 1),
+    SC_RAW = (1 << 2),
+    SC_SELECT = (1 << 3),
+    SC_RAW_T0 = (1 << 4),
+    SC_CLEARLOG = (1 << 5),
+    SC_LOG = (1 << 6),
+} smartcard_command_t;
+
+typedef struct {
+    uint8_t flags;
+    uint16_t len;
+    uint8_t data[];
+} PACKED smart_card_raw_t;
+
 
 // For the bootloader
 #define CMD_DEVICE_INFO                                                   0x0000
@@ -551,6 +585,7 @@ typedef struct {
 #define CMD_HF_ISO15693_COMMAND                                           0x0313
 #define CMD_HF_ISO15693_FINDAFI                                           0x0315
 #define CMD_HF_ISO15693_CSETUID                                           0x0316
+#define CMD_HF_ISO15693_SLIX_L_DISABLE_PRIVACY                            0x0317
 
 #define CMD_LF_SNIFF_RAW_ADC                                              0x0360
 
@@ -564,6 +599,8 @@ typedef struct {
 #define CMD_LF_HITAGS_SIMULATE                                            0x0368
 #define CMD_LF_HITAGS_READ                                                0x0373
 #define CMD_LF_HITAGS_WRITE                                               0x0375
+
+#define CMD_LF_HITAG_ELOAD                                                0x0376
 
 #define CMD_HF_ISO14443A_ANTIFUZZ                                         0x0380
 #define CMD_HF_ISO14443B_SIMULATE                                         0x0381
@@ -712,6 +749,8 @@ typedef struct {
 #define FLAG_MF_4K              0x400
 #define FLAG_FORCED_ATQA        0x800
 #define FLAG_FORCED_SAK         0x1000
+#define FLAG_CVE21_0430         0x2000
+
 
 // iCLASS reader flags
 #define FLAG_ICLASS_READER_INIT        0x01
@@ -824,10 +863,10 @@ typedef struct {
 
 // Receiving from USART need more than 30ms as we used on USB
 // else we get errors about partial packet reception
-// FTDI   9600 hw status        -> we need 20ms
-// FTDI 115200 hw status        -> we need 50ms
-// FTDI 460800 hw status        -> we need 30ms
-// BT   115200 hf mf fchk 1 dic -> we need 140ms
+// FTDI   9600 hw status                    -> we need 20ms
+// FTDI 115200 hw status                    -> we need 50ms
+// FTDI 460800 hw status                    -> we need 30ms
+// BT   115200  hf mf fchk --1k -f file.dic -> we need 140ms
 // all zero's configure: no timeout for read/write used.
 // took settings from libnfc/buses/uart.c
 

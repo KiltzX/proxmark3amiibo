@@ -96,7 +96,7 @@ static int print_barcode(uint8_t *barcode, const size_t barcode_len, bool verbos
     return PM3_SUCCESS;
 }
 
-static int CmdHfThinFilmInfo(const char *Cmd) {
+int CmdHfThinFilmInfo(const char *Cmd) {
     CLIParserContext *ctx;
     CLIParserInit(&ctx, "hf thinfilm info",
                   "Get info from Thinfilm tags",
@@ -124,6 +124,8 @@ int infoThinFilm(bool verbose) {
 
     if (resp.status == PM3_SUCCESS) {
         if (resp.length == 16 || resp.length == 32)  {
+            PrintAndLogEx(NORMAL, "");
+            PrintAndLogEx(INFO, "--- " _CYAN_("Tag Information") " ---------------------------");
             print_barcode(resp.data.asBytes, resp.length, verbose);
         } else {
             if (verbose)
@@ -136,7 +138,7 @@ int infoThinFilm(bool verbose) {
     return resp.status;
 }
 
-static int CmdHfThinFilmSim(const char *Cmd) {
+int CmdHfThinFilmSim(const char *Cmd) {
     CLIParserContext *ctx;
     CLIParserInit(&ctx, "hf thinfilm sim",
                   "Simulate Thinfilm tag",
@@ -189,13 +191,7 @@ static int CmdHfThinFilmSim(const char *Cmd) {
 }
 
 static int CmdHfThinFilmList(const char *Cmd) {
-    char args[128] = {0};
-    if (strlen(Cmd) == 0) {
-        snprintf(args, sizeof(args), "-t thinfilm");
-    } else {
-        strncpy(args, Cmd, sizeof(args) - 1);
-    }
-    return CmdTraceList(args);
+    return CmdTraceListAlias(Cmd, "hf thinfilm", "thinfilm");
 }
 
 static command_t CommandTable[] = {

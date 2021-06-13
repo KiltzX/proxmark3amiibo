@@ -177,10 +177,10 @@ int thread_init(thread_ctx_t *ctx, short type, size_t thread_count) {
 }
 
 int thread_start_scheduler(thread_ctx_t *ctx, thread_args_t *t_arg, wu_queue_ctx_t *queue_ctx) {
-    size_t z = 0;
+    size_t z;
     bool found = false;
     bool done = false;
-    unsigned int th_cnt = 0;
+    unsigned int th_cnt;
 
     if (ctx->type == THREAD_TYPE_SEQ) {
         bool error = false;
@@ -264,17 +264,6 @@ int thread_start_scheduler(thread_ctx_t *ctx, thread_args_t *t_arg, wu_queue_ctx
 
                 if (cur_status == TH_WAIT) {
                     pthread_mutex_lock(&ctx->thread_mutexs[z]);
-
-                    if (found) {
-#if TDEBUG >= 1
-                        printf("[%zu] key is found in another thread 1\n", z);
-                        fflush(stdout);
-#endif
-                        t_arg[z].status = TH_END;
-                        t_arg[z].quit = true;
-                        pthread_mutex_unlock(&ctx->thread_mutexs[z]);
-                        continue;
-                    }
 
                     if (wu_queue_done(queue_ctx) != QUEUE_EMPTY) {
                         t_arg[z].status = TH_PROCESSING;
@@ -427,20 +416,6 @@ int thread_stop(thread_ctx_t *ctx) {
     return 0;
 }
 
-__attribute__((format(printf, 1, 2)))
-void tprintf(const char *restrict format, ...) {
-    flockfile(stdout);
-
-    va_list va_args;
-    va_start(va_args, format);
-    vprintf(format, va_args);
-    va_end(va_args);
-
-    funlockfile(stdout);
-
-    fflush(stdout);
-}
-
 const char *thread_status_strdesc(thread_status_t s) {
     switch (s) {
         case TH_START:
@@ -470,13 +445,13 @@ bool thread_setEnd(thread_ctx_t *ctx, thread_args_t *t_arg) {
     for (z = 0; z < ctx->thread_count; z++) {
         int m_ret = pthread_mutex_lock(&ctx->thread_mutexs[z]);
         if (m_ret != 0) {
-            tprintf("[%zu] [%s] Error: pthread_mutex_lock() failed (%d): %s\n", z, __func__, m_ret, strerror(m_ret));
+            printf("[%zu] [%s] Error: pthread_mutex_lock() failed (%d): %s\n", z, __func__, m_ret, strerror(m_ret));
         }
 
         thread_status_t tmp = t_arg[z].status;
 
 #if DEBUGME > 0
-        tprintf("[%zu] [%s] Thread status: %s\n", z, __func__, thread_status_strdesc(t_arg[z].status));
+        printf("[%zu] [%s] Thread status: %s\n", z, __func__, thread_status_strdesc(t_arg[z].status));
 #endif
 
         if (tmp == TH_FOUND_KEY || tmp == TH_END || tmp == TH_ERROR) {
@@ -486,19 +461,19 @@ bool thread_setEnd(thread_ctx_t *ctx, thread_args_t *t_arg) {
         }
 
 #if DEBUGME > 0
-        tprintf("[%zu] [%s] Set thread status to TH_END\n", z, __func__);
+        printf("[%zu] [%s] Set thread status to TH_END\n", z, __func__);
 #endif
 
         t_arg[z].status = TH_END;
 
         if (tmp == TH_WAIT) {
 #if DEBUGME > 0
-            tprintf("[%zu] [%s] Send cond_signal to thread\n", z, __func__);
+            printf("[%zu] [%s] Send cond_signal to thread\n", z, __func__);
 #endif
 
             c_ret = pthread_cond_signal(&ctx->thread_conds[z]);
             if (c_ret != 0) {
-                tprintf("[%zu] [%s] Error: pthread_cond_signal() failed (%d): %s\n", z, __func__, c_ret, strerror(c_ret));
+                printf("[%zu] [%s] Error: pthread_cond_signal() failed (%d): %s\n", z, __func__, c_ret, strerror(c_ret));
             }
         }
 
@@ -529,17 +504,19 @@ void *computing_process(void *arg) {
     off = wu.off;
     a->slice = wu.id + 1;
 
+    float progress = (((wu.id + 1) * 100.0) / wu.max);
     if (ctx->queue_ctx.queue_type == QUEUE_TYPE_RANDOM) {
+
 #if DEBUGME > 0
         printf("[%zu] Slice %zu (off %zu), max %zu, remain %zu slice(s)\n", z, wu.id + 1, wu.off, wu.max, wu.rem);
 #else
-        printf("[%zu] Slice %zu/%zu (%zu remain)\n", z, wu.id + 1, wu.max, wu.rem);
+        printf("\r[%zu] Slice %zu/%zu (%zu remain) ( %2.1f%% )", z, wu.id + 1, wu.max, wu.rem, progress);
 #endif // DEBUGME
     } else {
 #if DEBUGME > 0
         printf("[%zu] Slice %zu/%zu, off %zu\n", z, wu.id + 1, wu.max, wu.off);
 #else
-        printf("[%zu] Slice %zu/%zu\n", z, wu.id + 1, wu.max);
+        printf("\r[%zu] Slice %zu/%zu ( %2.1f%% )", z, wu.id + 1, wu.max, progress);
 #endif // DEBUGME
     }
     fflush(stdout);
@@ -577,6 +554,7 @@ void *computing_process(void *arg) {
     }
 
     pthread_exit(NULL);
+    return NULL;
 }
 
 void *computing_process_async(void *arg) {
@@ -602,9 +580,6 @@ void *computing_process_async(void *arg) {
     opencl_ctx_t *ctx = a->ocl_ctx;
 
     pthread_mutex_unlock(&a->thread_ctx->thread_mutexs[z]);
-
-    uint64_t off = 0;
-    int ret = 0;
 
     if (status == TH_START) {
 #if TDEBUG >= 1
@@ -681,26 +656,27 @@ void *computing_process_async(void *arg) {
 
             wu_queue_data_t wu;
             wu_queue_pop(&ctx->queue_ctx, &wu, false);
-            off = wu.off;
+            uint32_t off = wu.off;
             a->slice = wu.id + 1;
 
+            float progress = (((wu.id + 1) * 100.0) / wu.max);
             if (ctx->queue_ctx.queue_type == QUEUE_TYPE_RANDOM) {
 #if DEBUGME > 0
                 printf("[%zu] Slice %zu (off %zu), max %zu, remain %zu slice(s)\n", z, wu.id + 1, wu.off, wu.max, wu.rem);
 #else
-                printf("[%zu] Slice %zu/%zu (%zu remain)\n", z, wu.id + 1, wu.max, wu.rem);
+                printf("[%zu] Slice %zu/%zu (%zu remain) ( %2.1f%% )", z, wu.id + 1, wu.max, wu.rem, progress);
 #endif // DEBUGME
             } else {
 #if DEBUGME > 0
                 printf("[%zu] Slice %zu/%zu, off %zu\n", z, wu.id + 1, wu.max, wu.off);
 #else
-                printf("[%zu] Slice %zu/%zu\n", z, wu.id + 1, wu.max);
+                printf("\r[%zu] Slice %zu/%zu ( %2.1f%% )", z, wu.id + 1, wu.max, progress);
 #endif // DEBUGME
             }
 
             fflush(stdout);
 
-            ret = runKernel(ctx, (uint32_t) off, matches, matches_found, z);
+            int ret = runKernel(ctx, off, matches, matches_found, z);
 
             if (ret < 1) { // error or nada
                 if (ret == -1) {
@@ -786,7 +762,7 @@ void *computing_process_async(void *arg) {
                     if (a->r) {
                         pthread_mutex_lock(&a->thread_ctx->thread_mutexs[z]);
                         a->s = matches[match];
-                        status = a->status = TH_FOUND_KEY;
+                        a->status = TH_FOUND_KEY;
                         a->quit = true;
                         pthread_mutex_unlock(&a->thread_ctx->thread_mutexs[z]);
 #if TDEBUG >= 1
@@ -874,4 +850,5 @@ void *computing_process_async(void *arg) {
     } while (status < TH_FOUND_KEY);
 
     pthread_exit(NULL);
+    return NULL;
 }

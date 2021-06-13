@@ -18,6 +18,7 @@
 #include "cmdsmartcard.h" // ExchangeAPDUSC
 #include "ui.h"
 #include "cmdhf14a.h"
+#include "cmdhf14b.h"
 #include "dol.h"
 #include "emv_tags.h"
 #include "emvjson.h"
@@ -156,7 +157,7 @@ enum CardPSVendor GetCardPSVendor(uint8_t *AID, size_t AIDlen) {
     return CV_NA;
 }
 
-static void print_cb(void *data, const struct tlv *tlv, int level, bool is_leaf) {
+static void emv_print_cb(void *data, const struct tlv *tlv, int level, bool is_leaf) {
     emv_tag_dump(tlv, level);
     if (is_leaf) {
         print_buffer(tlv->value, tlv->len, level);
@@ -168,7 +169,7 @@ bool TLVPrintFromBuffer(uint8_t *data, int datalen) {
     if (t) {
         PrintAndLogEx(INFO, "-------------------- " _CYAN_("TLV decoded") " --------------------");
 
-        tlvdb_visit(t, print_cb, NULL, 0);
+        tlvdb_visit(t, emv_print_cb, NULL, 0);
         tlvdb_free(t);
         return true;
     } else {
@@ -181,7 +182,7 @@ void TLVPrintFromTLVLev(struct tlvdb *tlv, int level) {
     if (!tlv)
         return;
 
-    tlvdb_visit(tlv, print_cb, NULL, level);
+    tlvdb_visit(tlv, emv_print_cb, NULL, level);
 }
 
 void TLVPrintFromTLV(struct tlvdb *tlv) {
@@ -300,14 +301,16 @@ static int EMVExchangeEx(EMVCommandChannel channel, bool ActivateField, bool Lea
     switch (channel) {
         case ECC_CONTACTLESS:
             res = ExchangeAPDU14a(data, datalen, ActivateField, LeaveFieldON, Result, (int)MaxResultLen, (int *)ResultLen);
-            if (res) {
-                return res;
+            if (res != PM3_SUCCESS) {
+                res = exchange_14b_apdu(data, datalen, ActivateField, LeaveFieldON, Result, (int)MaxResultLen, (int *)ResultLen, 4000);
+                if (res != PM3_SUCCESS)
+                    return res;
             }
             break;
         case ECC_CONTACT:
             res = 1;
             if (IfPm3Smartcard())
-                res = ExchangeAPDUSC(true, data, datalen, ActivateField, LeaveFieldON, Result, (int)MaxResultLen, (int *)ResultLen);
+                res = ExchangeAPDUSC(false, data, datalen, ActivateField, LeaveFieldON, Result, (int)MaxResultLen, (int *)ResultLen);
 
             if (res) {
                 return res;
@@ -536,6 +539,12 @@ int EMVSearch(EMVCommandChannel channel, bool ActivateField, bool LeaveFieldON, 
     int res = 0;
     int retrycnt = 0;
     for (int i = 0; i < ARRAYLEN(AIDlist); i ++) {
+
+        if (kbd_enter_pressed()) {
+            PrintAndLogEx(INFO, "user aborted...");
+            break;
+        }
+
         param_gethex_to_eol(AIDlist[i].aid, 0, aidbuf, sizeof(aidbuf), &aidlen);
         res = EMVSelect(channel, (i == 0) ? ActivateField : false, true, aidbuf, aidlen, data, sizeof(data), &datalen, &sw, tlv);
         // retry if error and not returned sw error
@@ -647,7 +656,12 @@ int EMVInternalAuthenticate(EMVCommandChannel channel, bool LeaveFieldON, uint8_
 }
 
 int MSCComputeCryptoChecksum(EMVCommandChannel channel, bool LeaveFieldON, uint8_t *UDOL, uint8_t UDOLlen, uint8_t *Result, size_t MaxResultLen, size_t *ResultLen, uint16_t *sw, struct tlvdb *tlv) {
-    return EMVExchange(channel, LeaveFieldON, (sAPDU) {0x80, 0x2a, 0x8e, 0x80, UDOLlen, UDOL}, Result, MaxResultLen, ResultLen, sw, tlv);
+    int res = EMVExchangeEx(channel, false, LeaveFieldON, (sAPDU) {0x80, 0x2a, 0x8e, 0x80, UDOLlen, UDOL}, true, Result, MaxResultLen, ResultLen, sw, tlv);
+    if (*sw == 0x6700 || *sw == 0x6f00) {
+        PrintAndLogEx(INFO, ">>> trying to reissue command without Le...");
+        res = EMVExchangeEx(channel, false, LeaveFieldON, (sAPDU) {0x80, 0x2a, 0x8e, 0x80, UDOLlen, UDOL}, false, Result, MaxResultLen, ResultLen, sw, tlv);
+    }
+    return res;
 }
 
 // Authentication
@@ -965,17 +979,21 @@ int trCDA(struct tlvdb *tlv, struct tlvdb *ac_tlv, struct tlv *pdol_data_tlv, st
                   sprint_hex(icc_pk->serial, 3)
                  );
 
-    struct tlvdb *dac_db = emv_pki_recover_dac(issuer_pk, tlv, sda_tlv);
-    if (dac_db) {
-        const struct tlv *dac_tlv = tlvdb_get(dac_db, 0x9f45, NULL);
-        PrintAndLogEx(SUCCESS, "SSAD verified (%s) (%02hhx:%02hhx)", _GREEN_("ok"), dac_tlv->value[0], dac_tlv->value[1]);
-        tlvdb_add(tlv, dac_db);
-    } else {
-        PrintAndLogEx(ERR, "Error: SSAD verify error");
-        emv_pk_free(pk);
-        emv_pk_free(issuer_pk);
-        emv_pk_free(icc_pk);
-        return 4;
+    // Signed Static Application Data (SSAD) check
+    const struct tlv *ssad_tlv = tlvdb_get(tlv, 0x93, NULL);
+    if (ssad_tlv && ssad_tlv->len > 1) {
+        struct tlvdb *dac_db = emv_pki_recover_dac(issuer_pk, tlv, sda_tlv);
+        if (dac_db) {
+            const struct tlv *dac_tlv = tlvdb_get(dac_db, 0x9f45, NULL);
+            PrintAndLogEx(SUCCESS, "Signed Static Application Data (SSAD) verified (%s) (%02hhx:%02hhx)", _GREEN_("ok"), dac_tlv->value[0], dac_tlv->value[1]);
+            tlvdb_add(tlv, dac_db);
+        } else {
+            PrintAndLogEx(ERR, "Error: Signed Static Application Data (SSAD) verify error");
+            emv_pk_free(pk);
+            emv_pk_free(issuer_pk);
+            emv_pk_free(icc_pk);
+            return 4;
+        }
     }
 
     PrintAndLogEx(INFO, "* * Check Signed Dynamic Application Data (SDAD)");

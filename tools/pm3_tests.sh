@@ -3,6 +3,9 @@
 PM3PATH="$(dirname "$0")/.."
 cd "$PM3PATH" || exit 1
 
+DICPATH="./client/dictionaries"
+RESOURCEPATH="./client/resources"
+
 SLOWTESTS=false
 GPUTESTS=false
 TESTALL=true
@@ -116,6 +119,8 @@ C_GREEN='\033[0;32m'
 C_YELLOW='\033[0;33m'
 C_BLUE='\033[0;34m'
 C_NC='\033[0m' # No Color
+C_OK='\xe2\x9c\x94\xef\xb8\x8f'
+C_FAIL='\xe2\x9d\x8c'
 
 # title, file name or file wildcard to check
 function CheckFileExist() {
@@ -123,16 +128,16 @@ function CheckFileExist() {
   printf "%-40s" "$1 "
 
   if [ -f "$2" ]; then
-    echo -e "${C_GREEN}[OK]${C_NC}"
+    echo -e "[ ${C_GREEN}OK${C_NC} ] ${C_OK}"
     return 0
   fi
 
   if ls "$2" 1> /dev/null 2>&1; then
-    echo -e "${C_GREEN}[OK]${C_NC}"
+    echo -e "[ ${C_GREEN}OK${C_NC} ] ${C_OK}"
     return 0
   fi
 
-  echo -e "${C_RED}[FAIL]${C_NC}"
+  echo -e "[ ${C_RED}FAIL${C_NC} ] ${C_FAIL}"
   return 1
 }
 
@@ -170,11 +175,11 @@ function CheckExecute() {
   printf "%-40s" "$1 "
 
   if $SLOWTEST && ! $SLOWTESTS; then
-    echo -e "${C_YELLOW}[SKIPPED]${C_NC} (slow)\n"
+    echo -e "[ ${C_YELLOW}SKIPPED${C_NC} ] ( slow )"
     return 0
   fi
   if $GPUTEST && ! $GPUTESTS; then
-    echo -e "${C_YELLOW}[SKIPPED]${C_NC} (gpu)\n"
+    echo -e "[ ${C_YELLOW}SKIPPED${C_NC} ] ( gpu )"
     return 0
   fi
 
@@ -182,18 +187,18 @@ function CheckExecute() {
   do
     RES=$(eval "$2")
     if echo "$RES" | grep -q "$3"; then
-      echo -e "${C_GREEN}[OK]${C_NC}"
+      echo -e "[ ${C_GREEN}OK${C_NC} ] ${C_OK}"
       return 0
     fi
     if [ ! $I == "e" ]; then echo "retry $I"; fi
   done
 
   if $IGNOREFAILURE; then
-    echo -e "${C_YELLOW}[IGNORED]${C_NC}"
+    echo -e "[ ${C_YELLOW}IGNORED${C_NC} ]"
     return 0
   fi
 
-  echo -e "${C_RED}[FAIL]${C_NC}"
+  echo -e "[ ${C_RED}FAIL${C_NC} ] ${C_FAIL}"
   echo -e "Execution trace:\n$RES"
   return 1
 }
@@ -220,8 +225,15 @@ echo ""
 while true; do
     if $TESTALL || $TESTCOMMON; then
       echo -e "\n${C_BLUE}Testing common:${C_NC}"
-      if ! CheckFileExist "hardnested tables exists"       "./client/resources/hardnested_tables/bitflip_0_001_states.bin.bz2"; then break; fi
-      if ! CheckFileExist "simmodule fw file exists"       "./client/resources/sim011.bin"; then break; fi
+      if ! CheckFileExist "hardnested tables exists"       "$RESOURCEPATH/hardnested_tables/bitflip_0_001_states.bin.bz2"; then break; fi
+      if ! CheckFileExist "simmodule fw file exists"       "$RESOURCEPATH/sim011.bin"; then break; fi
+      if ! CheckFileExist "iCLASS dictionary exists"       "$DICPATH/iclass_default_keys.dic"; then break; fi
+      if ! CheckFileExist "MFC dictionary exists"          "$DICPATH/mfc_default_keys.dic"; then break; fi
+      if ! CheckFileExist "MFDES dictionary exists"        "$DICPATH/mfdes_default_keys.dic"; then break; fi
+      if ! CheckFileExist "MFP dictionary exists"          "$DICPATH/mfp_default_keys.dic"; then break; fi
+      if ! CheckFileExist "MFULC dictionary exists"        "$DICPATH/mfulc_default_keys.dic"; then break; fi
+      if ! CheckFileExist "T55XX dictionary exists"        "$DICPATH/t55xx_default_pwds.dic"; then break; fi
+
       echo -e "\n${C_BLUE}Testing tools:${C_NC}"
       if ! CheckExecute "xorcheck test"                    "tools/xorcheck.py 04 00 80 64 ba" "final LRC XOR byte value: 5A"; then break; fi
       if ! CheckExecute "findbits test"                    "tools/findbits.py 73 0110010101110011" "Match at bit 9: 011001010"; then break; fi
@@ -263,7 +275,8 @@ while true; do
     if $TESTALL || $TESTMFNONCEBRUTE; then
       echo -e "\n${C_BLUE}Testing mf_nonce_brute:${C_NC} ${MFNONCEBRUTEBIN:=./tools/mf_nonce_brute/mf_nonce_brute}"
       if ! CheckFileExist "mf_nonce_brute exists"          "$MFNONCEBRUTEBIN"; then break; fi
-      if ! CheckExecute slow "mf_nonce_brute test"         "$MFNONCEBRUTEBIN 9c599b32 5a920d85 1011 98d76b77 d6c6e870 0000 ca7e0b63 0111 3e709c8a" "Key.*: \[ffffffffffff\]"; then break; fi
+      if ! CheckExecute slow "mf_nonce_brute test 1/2"         "$MFNONCEBRUTEBIN 9c599b32 5a920d85 1011 98d76b77 d6c6e870 0000 ca7e0b63 0111 3e709c8a" "Key found \[.*ffffffffffff.*\]"; then break; fi
+      if ! CheckExecute slow "mf_nonce_brute test 2/2"         "$MFNONCEBRUTEBIN 96519578 d7e3c6ac 0011 cd311951 9da49e49 0010 2bb22e00 0100 a4f7f398" "Key found \[.*3b7e4fd575ad.*\]"; then break; fi
     fi
     # hitag2crack not yet part of "all"
     # if $TESTALL || $TESTHITAG2CRACK; then
@@ -337,12 +350,21 @@ while true; do
       if ! CheckExecute "proxmark help"                    "$CLIENTBIN -h" "wait"; then break; fi
       if ! CheckExecute "proxmark help text ISO7816"       "$CLIENTBIN -t 2>&1" "ISO7816"; then break; fi
       if ! CheckExecute "proxmark help text hardnested"    "$CLIENTBIN -t 2>&1" "hardnested"; then break; fi
+      if ! CheckExecute "proxmark full help dump"          "$CLIENTBIN --fulltext 2>&1" "Full help dump done"; then break; fi
+      if ! CheckExecute "proxmark multi cmds 1/2"          "$CLIENTBIN -c 'rem foo;rem bar'" "remark: foo"; then break; fi
+      if ! CheckExecute "proxmark multi cmds 2/2"          "$CLIENTBIN -c 'rem foo;rem bar'" "remark: bar"; then break; fi
+      if ! CheckExecute "proxmark multi stdin 1/4"         "echo 'rem foo;rem bar;quit' |$CLIENTBIN" "remark: foo"; then break; fi
+      if ! CheckExecute "proxmark multi stdin 2/4"         "echo 'rem foo;rem bar;quit' |$CLIENTBIN" "remark: bar"; then break; fi
+      if ! CheckExecute "proxmark multi stdin 3/4"         "echo -e 'rem foo\nrem bar;quit' |$CLIENTBIN" "remark: foo"; then break; fi
+      if ! CheckExecute "proxmark multi stdin 4/4"         "echo -e 'rem foo\nrem bar;quit' |$CLIENTBIN" "remark: bar"; then break; fi
 
       echo -e "\n${C_BLUE}Testing data manipulation:${C_NC}"
       if ! CheckExecute "reveng readline test"    "$CLIENTBIN -c 'reveng -h;reveng -D'" "CRC-64/GO-ISO"; then break; fi
       if ! CheckExecute "reveng -g test"          "$CLIENTBIN -c 'reveng -g abda202c'" "CRC-16/ISO-IEC-14443-3-A"; then break; fi
       if ! CheckExecute "reveng -w test"          "$CLIENTBIN -c 'reveng -w 8 -s 01020304e3 010204039d'" "CRC-8/SMBUS"; then break; fi
       if ! CheckExecute "mfu pwdgen test"         "$CLIENTBIN -c 'hf mfu pwdgen -t'" "Selftest OK"; then break; fi
+      if ! CheckExecute "mfu keygen test"         "$CLIENTBIN -c 'hf mfu keygen --uid 11223344556677'" "80 B1 C2 71 D8 A0"; then break; fi
+      if ! CheckExecute "jooki encode test"       "$CLIENTBIN -c 'hf jooki encode -t'" "04 28 F4 DA F0 4A 81  ( ok )"; then break; fi
       if ! CheckExecute "trace load/list 14a"     "$CLIENTBIN -c 'trace load -f traces/hf_14a_mfu.trace; trace list -1 -t 14a;'" "READBLOCK(8)"; then break; fi
       if ! CheckExecute "trace load/list x"       "$CLIENTBIN -c 'trace load -f traces/hf_14a_mfu.trace; trace list -x1 -t 14a;'" "0.0101840425"; then break; fi
 
@@ -382,13 +404,13 @@ while true; do
                                                                      "temperature     95.2 F / 35.1 C"; then break; fi
       if ! CheckExecute slow "lf T55 gallagher test"             "$CLIENTBIN -c 'data load -f traces/lf_ATA5577_gallagher.pm3; lf search -1'" "GALLAGHER ID found"; then break; fi
       if ! CheckExecute slow "lf T55 gallagher test2"            "$CLIENTBIN -c 'data load -f traces/lf_ATA5577_gallagher.pm3; lf gallagher demod'" \
-                                                                     "GALLAGHER - Region: 0 FC: 27865 CN: 682758 Issue Level: 13"; then break; fi
+                                                                     "GALLAGHER - Region: 1 FC: 16640 CN: 201 Issue Level: 1"; then break; fi
       if ! CheckExecute slow "lf T55 gproxii test"               "$CLIENTBIN -c 'data load -f traces/lf_ATA5577_gproxii.pm3; lf search -1'" "Guardall G-Prox II ID found"; then break; fi
       if ! CheckExecute slow "lf T55 gproxii test2"              "$CLIENTBIN -c 'data load -f traces/lf_ATA5577_gproxii.pm3; lf gproxii demod'" \
                                                                      "G-Prox-II - len: 26 FC: 123 Card: 11223, Raw: f98c7038c63356c7ac26398c"; then break; fi
       if ! CheckExecute slow "lf T55 hid test"                   "$CLIENTBIN -c 'data load -f traces/lf_ATA5577_hid.pm3; lf search -1'" "HID Prox ID found"; then break; fi
       if ! CheckExecute slow "lf T55 hid test2"                  "$CLIENTBIN -c 'data load -f traces/lf_ATA5577_hid.pm3; lf hid demod'" \
-                                                                     "HID H10301 26-bit;  FC: 118  CN: 1603"; then break; fi
+                                                                     "FC: 118  CN: 1603"; then break; fi
       if ! CheckExecute slow "lf T55 hid_48 test"                "$CLIENTBIN -c 'data load -f traces/lf_ATA5577_hid_48.pm3; lf search -1'" "HID Prox ID found"; then break; fi
       if ! CheckExecute slow "lf T55 hid_48 test2"               "$CLIENTBIN -c 'data load -f traces/lf_ATA5577_hid_48.pm3; lf hid demod'" \
                                                                      "HID Corporate 1000 48-bit"; then break; fi
@@ -458,16 +480,21 @@ while true; do
 
       echo -e "\n${C_BLUE}Testing HF:${C_NC}"
       if ! CheckExecute "hf mf offline text"               "$CLIENTBIN -c 'hf mf'" "at_enc"; then break; fi
-      if ! CheckExecute slow retry ignore "hf mf hardnested long test"  "$CLIENTBIN -c 'hf mf hardnested t 1 000000000000'" "found:"; then break; fi
-      if ! CheckExecute slow "hf iclass long test"         "$CLIENTBIN -c 'hf iclass loclass --long'" "verified (ok)"; then break; fi
+      if ! CheckExecute slow retry ignore "hf mf hardnested long test"  "$CLIENTBIN -c 'hf mf hardnested -t --tk 000000000000'" "found:"; then break; fi
+      if ! CheckExecute slow "hf iclass loclass long test" "$CLIENTBIN -c 'hf iclass loclass --long'" "verified (ok)"; then break; fi
       if ! CheckExecute slow "emv long test"               "$CLIENTBIN -c 'emv test -l'" "Test(s) \[ ok"; then break; fi
+      if ! CheckExecute "hf iclass lookup test"            "$CLIENTBIN -c 'hf iclass lookup --csn 9655a400f8ff12e0 --epurse f0ffffffffffffff --macs 0000000089cb984b -f $DICPATH/iclass_default_keys.dic'" \
+                                                                      "valid key AE A6 84 A6 DA B2 32 78"; then break; fi
+
       if ! $SLOWTESTS; then
-        if ! CheckExecute "hf iclass test"                 "$CLIENTBIN -c 'hf iclass loclass --test'" "key diversification (ok)"; then break; fi
+        if ! CheckExecute "hf iclass loclass test"         "$CLIENTBIN -c 'hf iclass loclass --test'" "key diversification (ok)"; then break; fi
         if ! CheckExecute "emv test"                       "$CLIENTBIN -c 'emv test'" "Test(s) \[ ok"; then break; fi
       fi
     fi
-  echo -e "\n${C_GREEN}Tests [OK]${C_NC}\n"
+  echo -e "\n------------------------------------------------------------"
+  echo -e "Tests [ ${C_GREEN}OK${C_NC} ] ${C_OK}\n"
   exit 0
 done
-echo -e "\n${C_RED}Tests [FAIL]${C_NC}\n"
+echo -e "\n------------------------------------------------------------"
+echo -e "\nTests [ ${C_RED}FAIL${C_NC} ] ${C_FAIL}\n"
 exit 1

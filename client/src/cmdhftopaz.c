@@ -22,7 +22,7 @@
 #include "ui.h"
 #include "crc16.h"
 #include "protocols.h"
-#include "mifare/ndef.h"
+#include "nfc/ndef.h"
 
 #define TOPAZ_STATIC_MEMORY (0x0f * 8)  // 15 blocks with 8 Bytes each
 
@@ -54,11 +54,9 @@ static void topaz_switch_off_field(void) {
 
 // send a raw topaz command, returns the length of the response (0 in case of error)
 static int topaz_send_cmd_raw(uint8_t *cmd, uint8_t len, uint8_t *response, uint16_t *response_len, bool verbose) {
-    SendCommandOLD(CMD_HF_ISO14443A_READER, ISO14A_RAW | ISO14A_NO_DISCONNECT | ISO14A_TOPAZMODE | ISO14A_NO_RATS, len, 0, cmd, len);
-
+    SendCommandMIX(CMD_HF_ISO14443A_READER, ISO14A_RAW | ISO14A_NO_DISCONNECT | ISO14A_TOPAZMODE | ISO14A_NO_RATS, len, 0, cmd, len);
     PacketResponseNG resp;
-
-    if (!WaitForResponseTimeout(CMD_ACK, &resp, 1500)) {
+    if (WaitForResponseTimeout(CMD_ACK, &resp, 1500) == false) {
         if (verbose) PrintAndLogEx(WARNING, "timeout while waiting for reply.");
         return PM3_ETIMEOUT;
     }
@@ -414,7 +412,7 @@ static int CmdHFTopazReader(const char *Cmd) {
 }
 
 // read a Topaz tag and print some useful information
-static int CmdHFTopazInfo(const char *Cmd) {
+int CmdHFTopazInfo(const char *Cmd) {
     CLIParserContext *ctx;
     CLIParserInit(&ctx, "hf topaz info",
                   "Get info from Topaz tags",
@@ -494,7 +492,7 @@ static int CmdHFTopazSim(const char *Cmd) {
     CLIParserContext *ctx;
     CLIParserInit(&ctx, "hf topaz sim",
                   "Simulate a Topaz tag",
-                  "hf topaz sim <- Not yet implemented");
+                  "hf topaz sim   -> Not yet implemented");
 
     void *argtable[] = {
         arg_param_begin,
@@ -510,7 +508,7 @@ static int CmdHFTopazCmdRaw(const char *Cmd) {
     CLIParserContext *ctx;
     CLIParserInit(&ctx, "hf topaz raw",
                   "Send raw hex data to Topaz tags",
-                  "hf topaz raw <- Not yet implemented");
+                  "hf topaz raw   -> Not yet implemented");
 
     void *argtable[] = {
         arg_param_begin,
@@ -524,13 +522,7 @@ static int CmdHFTopazCmdRaw(const char *Cmd) {
 }
 
 static int CmdHFTopazList(const char *Cmd) {
-    char args[128] = {0};
-    if (strlen(Cmd) == 0) {
-        snprintf(args, sizeof(args), "-t topaz");
-    } else {
-        strncpy(args, Cmd, sizeof(args) - 1);
-    }
-    return CmdTraceList(args);
+    return CmdTraceListAlias(Cmd, "hf topaz", "topaz");
 }
 
 static int CmdHFTopazSniff(const char *Cmd) {
@@ -614,7 +606,6 @@ int readTopazUid(bool verbose) {
     // printing
     PrintAndLogEx(NORMAL, "");
     PrintAndLogEx(INFO, "--- " _CYAN_("Tag Information") " ---------------------------");
-    PrintAndLogEx(INFO, "-------------------------------------------------------------");
     PrintAndLogEx(SUCCESS, "  UID: %02x %02x %02x %02x %02x %02x %02x",
                   topaz_tag.uid[6],
                   topaz_tag.uid[5],

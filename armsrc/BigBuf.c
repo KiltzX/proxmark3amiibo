@@ -14,12 +14,12 @@
 #include "dbprint.h"
 #include "pm3_cmd.h"
 
-extern uint8_t _stack_start, __bss_end__;
+extern uint32_t _stack_start[], __bss_end__[];
 
 // BigBuf is the large multi-purpose buffer, typically used to hold A/D samples or traces.
 // Also used to hold various smaller buffers and the Mifare Emulator Memory.
 // We know that bss is aligned to 4 bytes.
-static uint8_t *BigBuf = &__bss_end__;
+static uint8_t *BigBuf = (uint8_t *)__bss_end__;
 
 /* BigBuf memory layout:
 Pointer to highest available memory: s_bigbuf_hi
@@ -69,7 +69,7 @@ static bool tracing = true;
 
 // compute the available size for BigBuf
 void BigBuf_initialize(void) {
-    s_bigbuf_size = (uint32_t)&_stack_start - (uint32_t)&__bss_end__;
+    s_bigbuf_size = (uint32_t)_stack_start - (uint32_t)__bss_end__;
     s_bigbuf_hi = s_bigbuf_size;
     trace_len = 0;
 }
@@ -163,15 +163,31 @@ void BigBuf_free_keep_EM(void) {
 
 void BigBuf_print_status(void) {
     DbpString(_CYAN_("Memory"));
-    Dbprintf("  BigBuf_size.............%d", s_bigbuf_size);
-    Dbprintf("  Available memory........%d", s_bigbuf_hi);
+    Dbprintf("  BigBuf_size............. %d", s_bigbuf_size);
+    Dbprintf("  Available memory........ %d", s_bigbuf_hi);
     DbpString(_CYAN_("Tracing"));
-    Dbprintf("  tracing ................%d", tracing);
-    Dbprintf("  traceLen ...............%d", trace_len);
+    Dbprintf("  tracing ................ %d", tracing);
+    Dbprintf("  traceLen ............... %d", trace_len);
 
-    Dbprintf("  dma8 memory.............%d", dma_8.buf - BigBuf_get_addr());
-    Dbprintf("  dma16 memory............%d", (uint8_t *)dma_16.buf - BigBuf_get_addr());
-    Dbprintf("  toSend memory...........%d", toSend.buf - BigBuf_get_addr());
+    if (DBGLEVEL >= DBG_DEBUG) {
+        DbpString(_CYAN_("Sending buffers"));
+
+        uint16_t d8 = 0;
+        if (dma_8.buf)
+            d8 = dma_8.buf - BigBuf_get_addr();
+
+        uint16_t d16 = 0;
+        if (dma_16.buf)
+            d16 = (uint8_t *)dma_16.buf - BigBuf_get_addr();
+
+        uint16_t ts = 0;
+        if (toSend.buf)
+            ts = toSend.buf - BigBuf_get_addr();
+
+        Dbprintf("  dma8 memory............. %u", d8);
+        Dbprintf("  dma16 memory............ %u", d16);
+        Dbprintf("  toSend memory........... %u", ts);
+    }
 }
 
 // return the maximum trace length (i.e. the unallocated size of BigBuf)
@@ -206,7 +222,7 @@ uint32_t BigBuf_get_traceLen(void) {
 /**
   This is a function to store traces. All protocols can use this generic tracer-function.
   The traces produced by calling this function can be fetched on the client-side
-  by 'hf list raw', alternatively 'hf list <proto>' for protocol-specific
+  by 'hf list -t raw', alternatively 'hf list -t <proto>' for protocol-specific
   annotation of commands/responses.
 **/
 bool RAMFUNC LogTrace(const uint8_t *btBytes, uint16_t iLen, uint32_t timestamp_start, uint32_t timestamp_end, uint8_t *parity, bool readerToTag) {

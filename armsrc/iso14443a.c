@@ -28,6 +28,8 @@
 #include "protocols.h"
 
 #define MAX_ISO14A_TIMEOUT 524288
+
+// this timeout is in MS
 static uint32_t iso14a_timeout;
 
 static uint8_t colpos = 0;
@@ -133,30 +135,30 @@ static hf14a_config hf14aconfig = { 0, 0, 0, 0, 0 } ;
 
 void printHf14aConfig(void) {
     DbpString(_CYAN_("HF 14a config"));
-    Dbprintf("  [a] Anticol override....%s%s%s",
-             (hf14aconfig.forceanticol == 0) ? _GREEN_("std") "    : follow standard " : "",
-             (hf14aconfig.forceanticol == 1) ? _RED_("force") "  : always do anticol" : "",
-             (hf14aconfig.forceanticol == 2) ? _RED_("skip") "   : always skip anticol" : ""
+    Dbprintf("  [a] Anticol override.... %s%s%s",
+             (hf14aconfig.forceanticol == 0) ? _GREEN_("std") "    ( follow standard )" : "",
+             (hf14aconfig.forceanticol == 1) ? _RED_("force") " ( always do anticol )" : "",
+             (hf14aconfig.forceanticol == 2) ? _RED_("skip") "   ( always skip anticol )" : ""
             );
-    Dbprintf("  [b] BCC override........%s%s%s",
-             (hf14aconfig.forcebcc == 0) ? _GREEN_("std") "    : follow standard" : "",
-             (hf14aconfig.forcebcc == 1) ? _RED_("fix") "    : fix bad BCC" : "",
-             (hf14aconfig.forcebcc == 2) ? _RED_("ignore") " : ignore bad BCC, always use card BCC" : ""
+    Dbprintf("  [b] BCC override........ %s%s%s",
+             (hf14aconfig.forcebcc == 0) ? _GREEN_("std") "    ( follow standard )" : "",
+             (hf14aconfig.forcebcc == 1) ? _RED_("fix") "    ( fix bad BCC )" : "",
+             (hf14aconfig.forcebcc == 2) ? _RED_("ignore") " ( ignore bad BCC, always use card BCC )" : ""
             );
-    Dbprintf("  [2] CL2 override........%s%s%s",
-             (hf14aconfig.forcecl2 == 0) ? _GREEN_("std") "    : follow standard" : "",
-             (hf14aconfig.forcecl2 == 1) ? _RED_("force") "  : always do CL2" : "",
-             (hf14aconfig.forcecl2 == 2) ? _RED_("skip") "   : always skip CL2" : ""
+    Dbprintf("  [2] CL2 override........ %s%s%s",
+             (hf14aconfig.forcecl2 == 0) ? _GREEN_("std") "    ( follow standard )" : "",
+             (hf14aconfig.forcecl2 == 1) ? _RED_("force") "  ( always do CL2 )" : "",
+             (hf14aconfig.forcecl2 == 2) ? _RED_("skip") "   ( always skip CL2 )" : ""
             );
-    Dbprintf("  [3] CL3 override........%s%s%s",
-             (hf14aconfig.forcecl3 == 0) ? _GREEN_("std") "    : follow standard" : "",
-             (hf14aconfig.forcecl3 == 1) ? _RED_("force") "  : always do CL3" : "",
-             (hf14aconfig.forcecl3 == 2) ? _RED_("skip") "   : always skip CL3" : ""
+    Dbprintf("  [3] CL3 override........ %s%s%s",
+             (hf14aconfig.forcecl3 == 0) ? _GREEN_("std") "    ( follow standard )" : "",
+             (hf14aconfig.forcecl3 == 1) ? _RED_("force") "  ( always do CL3 )" : "",
+             (hf14aconfig.forcecl3 == 2) ? _RED_("skip") "   ( always skip CL3 )" : ""
             );
-    Dbprintf("  [r] RATS override.......%s%s%s",
-             (hf14aconfig.forcerats == 0) ? _GREEN_("std") "    : follow standard " : "",
-             (hf14aconfig.forcerats == 1) ? _RED_("force") "  : always do RATS" : "",
-             (hf14aconfig.forcerats == 2) ? _RED_("skip") "   : always skip RATS" : ""
+    Dbprintf("  [r] RATS override....... %s%s%s",
+             (hf14aconfig.forcerats == 0) ? _GREEN_("std") "    ( follow standard )" : "",
+             (hf14aconfig.forcerats == 1) ? _RED_("force") "  ( always do RATS )" : "",
+             (hf14aconfig.forcerats == 2) ? _RED_("skip") "   () always skip RATS )" : ""
             );
 }
 
@@ -191,11 +193,11 @@ void iso14a_set_trigger(bool enable) {
 }
 
 void iso14a_set_timeout(uint32_t timeout) {
-    iso14a_timeout = timeout + (DELAY_AIR2ARM_AS_READER + DELAY_ARM2AIR_AS_READER) / (16 * 8) + 2;
+    iso14a_timeout = timeout + (DELAY_AIR2ARM_AS_READER + DELAY_ARM2AIR_AS_READER) / 128 + 2;
 }
 
 uint32_t iso14a_get_timeout(void) {
-    return iso14a_timeout - (DELAY_AIR2ARM_AS_READER + DELAY_ARM2AIR_AS_READER) / (16 * 8) - 2;
+    return iso14a_timeout - (DELAY_AIR2ARM_AS_READER + DELAY_ARM2AIR_AS_READER) / 128 - 2;
 }
 
 //-----------------------------------------------------------------------------
@@ -682,12 +684,12 @@ void RAMFUNC SniffIso14443a(uint8_t param) {
     uint32_t rx_samples = 0;
 
     // loop and listen
-    while (!BUTTON_PRESS()) {
+    while (BUTTON_PRESS() == false) {
         WDT_HIT();
         LED_A_ON();
 
-        int register readBufDataP = data - dma->buf;
-        int register dmaBufDataP = DMA_BUFFER_SIZE - AT91C_BASE_PDC_SSC->PDC_RCR;
+        register int readBufDataP = data - dma->buf;
+        register int dmaBufDataP = DMA_BUFFER_SIZE - AT91C_BASE_PDC_SSC->PDC_RCR;
         if (readBufDataP <= dmaBufDataP)
             dataLen = dmaBufDataP - readBufDataP;
         else
@@ -916,18 +918,25 @@ bool GetIso14443aCommandFromReader(uint8_t *received, uint8_t *par, int *len) {
     uint8_t b = (uint8_t)AT91C_BASE_SSC->SSC_RHR;
     (void)b;
 
-    uint16_t check = 0;
-
+    uint8_t flip = 0;
+    uint16_t checker = 0;
     for (;;) {
-        if (check == 4000) {
-//            if (BUTTON_PRESS() || data_available())
+        WDT_HIT();
+        if (flip == 3) {
+            if (data_available())
+                return false;
+
+            flip = 0;
+        }
+
+        if (checker >= 3000) {
             if (BUTTON_PRESS())
                 return false;
 
-            check = 0;
-            WDT_HIT();
+            flip++;
+            checker = 0;
         }
-        ++check;
+        ++checker;
 
         if (AT91C_BASE_SSC->SSC_SR & (AT91C_SSC_RXRDY)) {
             b = (uint8_t)AT91C_BASE_SSC->SSC_RHR;
@@ -1335,7 +1344,6 @@ void SimulateIso14443aTag(uint8_t tagType, uint8_t flags, uint8_t *data, uint8_t
     LED_A_ON();
 
     // main loop
-    //for (;;) {
     bool finished = false;
     bool button_pushed = BUTTON_PRESS();
     while (!button_pushed && !finished) {
@@ -1817,7 +1825,7 @@ static void PrepareDelayedTransfer(uint16_t delay) {
 //-------------------------------------------------------------------------------------
 static void TransmitFor14443a(const uint8_t *cmd, uint16_t len, uint32_t *timing) {
 
-    if (!g_hf_field_active) {
+    if (g_hf_field_active == false) {
         Dbprintf("Warning: HF field is off, ignoring TransmitFor14443a command");
         return;
     }
@@ -2000,7 +2008,7 @@ int EmGetCmd(uint8_t *received, uint16_t *len, uint8_t *par) {
 
             analogCnt++;
 
-            analogAVG += AT91C_BASE_ADC->ADC_CDR[ADC_CHAN_HF_RDV40];
+            analogAVG += (AT91C_BASE_ADC->ADC_CDR[ADC_CHAN_HF_RDV40] & 0x3FF);
 
             AT91C_BASE_ADC->ADC_CR = AT91C_ADC_START;
 
@@ -2028,7 +2036,7 @@ int EmGetCmd(uint8_t *received, uint16_t *len, uint8_t *par) {
 
             analogCnt++;
 
-            analogAVG += AT91C_BASE_ADC->ADC_CDR[ADC_CHAN_HF];
+            analogAVG += (AT91C_BASE_ADC->ADC_CDR[ADC_CHAN_HF] & 0x3FF);
 
             AT91C_BASE_ADC->ADC_CR = AT91C_ADC_START;
 
@@ -2267,9 +2275,7 @@ bool GetIso14443aAnswerFromTag_Thinfilm(uint8_t *receivedResponse,  uint8_t *rec
 //  If it takes too long return FALSE
 //-----------------------------------------------------------------------------
 static int GetIso14443aAnswerFromTag(uint8_t *receivedResponse, uint8_t *receivedResponsePar, uint16_t offset) {
-    uint32_t c = 0;
-
-    if (!g_hf_field_active)
+    if (g_hf_field_active == false)
         return false;
 
     // Set FPGA mode to "reader listen mode", no modulation (listen
@@ -2285,6 +2291,7 @@ static int GetIso14443aAnswerFromTag(uint8_t *receivedResponse, uint8_t *receive
     uint8_t b = (uint8_t)AT91C_BASE_SSC->SSC_RHR;
     (void)b;
 
+    volatile uint32_t c = 0;
     uint32_t timeout = iso14a_get_timeout();
     uint32_t receive_timer = GetTickCount();
     for (;;) {
@@ -2460,7 +2467,7 @@ static int GetATQA(uint8_t *resp, uint8_t *resp_par) {
     uint8_t wupa[] = { ISO14443A_CMD_WUPA };  // 0x26 - REQA  0x52 - WAKE-UP
 
     uint32_t save_iso14a_timeout = iso14a_get_timeout();
-    iso14a_set_timeout(1236 / (16 * 8) + 1);  // response to WUPA is expected at exactly 1236/fc. No need to wait longer.
+    iso14a_set_timeout(1236 / 128 + 1);  // response to WUPA is expected at exactly 1236/fc. No need to wait longer.
 
     uint32_t start_time = GetTickCount();
     int len;
@@ -2662,7 +2669,9 @@ int iso14443a_select_card(uint8_t *uid_ptr, iso14a_card_select_t *p_card, uint32
         if ((sak & 0x20) != 0) Dbprintf("Skipping RATS according to hf 14a config");
         return 2;
     } // else force RATS
+
     if ((sak & 0x20) == 0) Dbprintf("Forcing RATS according to hf 14a config");
+
     // RATS, Request for answer to select
     if (no_rats == false) {
         uint8_t rats[] = { ISO14443A_CMD_RATS, 0x80, 0x00, 0x00 }; // FSD=256, FSDI=8, CID=0
@@ -2966,7 +2975,7 @@ void ReaderIso14443a(PacketCommandNG *c) {
             }
         }
 
-        if (tearoff_hook() == PM3_ETEAROFF) { // tearoff occured
+        if (tearoff_hook() == PM3_ETEAROFF) { // tearoff occurred
             FpgaDisableTracing();
             reply_mix(CMD_ACK, 0, 0, 0, NULL, 0);
         } else {

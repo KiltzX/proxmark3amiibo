@@ -30,7 +30,7 @@ local read14a = require('read14a')
 --
 copyright = 'RRG Team'
 author = 'Winds'
-version = 'v1.0.0'
+version = 'v1.0.1'
 desc = [[
     This script gives you an easy way to write your *.eml dumps into normal MIFARE Classic and Magic Gen3 cards.
 
@@ -46,11 +46,6 @@ desc = [[
     5. Erase all data at the card and set the FF FF FF FF FF FF keys, and Access Conditions to 78778800.
 
     Script works in a wizard styled way.
-
-    Author Youtube channel: https://yev.ooo/
-
-    Many Thanks,
-    Best Regards
 ]]
 example = [[
     1. script run mfc_gen3_writer
@@ -80,8 +75,8 @@ local default_key_type = '01' --KeyA: 00, KeyB: 01
 local default_key_blk = 'FFFFFFFFFFFF7C378800FFFFFFFFFFFF' -- Writing blocks
 local piswords_uid_lock = 'hf 14a raw -s -c -t 2000 90fd111100'
 local piswords_uid_change = 'hf 14a raw -s -c -t 2000 90f0cccc10'
-local cmd_wrbl_a = 'hf mf wrbl %d A %s %s' -- Writing blocks by A key
-local cmd_wrbl_b = 'hf mf wrbl %d B %s %s' -- Writing blocks by B key
+local cmd_wrbl_a = 'hf mf wrbl --blk %d -a -k %s -d %s' -- Writing blocks by A key
+local cmd_wrbl_b = 'hf mf wrbl --blk %d -b -k %s -d %s' -- Writing blocks by B key
 --
 ---
 -------------------------------
@@ -195,7 +190,7 @@ local function checkkey()
         cmd = Command:newNG{cmd = cmds.CMD_HF_MIFARE_READBL, data = ('%02x%02x%s'):format((i-1), default_key_type, default_key)}
         if (getblockdata(cmd:sendNG(false)) == true) then
             status = status + 1
-                print(('%s %02s %s %s %s'):format(' ', (i-1), KeyAB(), default_key, 'OK'))
+            print(('%s %02s %s %s %s'):format(' ', (i-1), KeyAB(), default_key, 'OK'))
         else
             break
         end

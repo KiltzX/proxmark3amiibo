@@ -4,9 +4,6 @@
 # the license.
 #-----------------------------------------------------------------------------
 
-# Must be called before any Makefile include
-ROOT_DIR:=$(dir $(realpath $(lastword $(MAKEFILE_LIST))))
-
 include ../Makefile.defs
 
 INSTALLBIN = proxmark3
@@ -16,8 +13,11 @@ VPATH =  ../common src
 vpath %.dic dictionaries
 OBJDIR = obj
 
-ifeq ($(platform),Darwin)
+ifeq ($(USE_BREW),1)
+	INCLUDES += -I$(BREW_PREFIX)/include
+	LDLIBS += -L$(BREW_PREFIX)/lib
 	PKG_CONFIG_ENV := PKG_CONFIG_PATH=$(BREW_PREFIX)/opt/qt/lib/pkgconfig
+	PKG_CONFIG_ENV := PKG_CONFIG_PATH=$(BREW_PREFIX)/opt/qt5/lib/pkgconfig
 endif
 
 ###################
@@ -91,6 +91,7 @@ WHEREAMILIBLD =
 MBEDTLSLIBPATH = ../common/mbedtls
 MBEDTLSLIBINC = -I$(MBEDTLSLIBPATH)
 MBEDTLSLIB = $(OBJDIR)/libmbedtls.a
+MBEDTLSLIBCLIENTRELPATH = ../../client
 
 ########################################################
 # optional system libraries to replace local libraries #
@@ -277,9 +278,9 @@ CXXINCLUDES += $(QTINCLUDES)
 
 ## Readline
 ifneq ($(SKIPREADLINE),1)
-    ifeq ($(platform),Darwin)
-		LDLIBS += -L$(BREW_PREFIX)/opt/readline/lib
-		INCLUDES += -I$(BREW_PREFIX)/opt/readline/include
+    ifeq ($(USE_BREW),1)
+        LDLIBS += -L$(BREW_PREFIX)/opt/readline/lib
+        INCLUDES += -I$(BREW_PREFIX)/opt/readline/include
     endif
     LDLIBS += -lreadline
     READLINE_FOUND = 1
@@ -474,6 +475,7 @@ SRCS =  aiddesfire.c \
 		cmdhffido.c \
 		cmdhficlass.c \
 		cmdhflegic.c \
+		cmdhfjooki.c \
 		cmdhflist.c \
 		cmdhflto.c \
 		cmdhfmf.c \
@@ -481,7 +483,9 @@ SRCS =  aiddesfire.c \
 		cmdhfmfhard.c \
 		cmdhfmfu.c \
 		cmdhfmfp.c \
+		cmdhfseos.c \
 		cmdhfst.c \
+		cmdhfst25ta.c \
 		cmdhfthinfilm.c \
 		cmdhftopaz.c \
 		cmdhfwaveshare.c \
@@ -520,6 +524,7 @@ SRCS =  aiddesfire.c \
 		cmdlfviking.c \
 		cmdlfvisa2000.c \
 		cmdmain.c \
+		cmdnfc.c \
 		cmdparser.c \
 		cmdscript.c \
 		cmdsmartcard.c \
@@ -567,7 +572,7 @@ SRCS =  aiddesfire.c \
 		mifare/mifare4.c \
 		mifare/mifaredefault.c \
 		mifare/mifarehost.c \
-		mifare/ndef.c \
+		nfc/ndef.c \
 		pm3.c \
 		pm3_binlib.c \
 		pm3_bitlib.c \
@@ -581,7 +586,7 @@ SRCS =  aiddesfire.c \
 		tea.c \
 		ui.c \
 		util.c \
-		version.c \
+		version_pm3.c \
 		wiegand_formats.c \
 		wiegand_formatutils.c
 
@@ -630,7 +635,7 @@ OBJS += $(OBJCSRCS:%.m=$(OBJDIR)/%.o)
 
 BINS = proxmark3
 
-CLEAN = $(BINS) src/version.c src/*.moc.cpp src/ui/ui_overlays.h lualibs/pm3_cmd.lua lualibs/mfc_default_keys.lua
+CLEAN = $(BINS) src/version_pm3.c src/*.moc.cpp src/ui/ui_overlays.h lualibs/pm3_cmd.lua lualibs/mfc_default_keys.lua
 # transition: cleaning also old path stuff
 CLEAN += flasher *.moc.cpp ui/ui_overlays.h
 
@@ -736,7 +741,7 @@ endif
 
 $(MBEDTLSLIB): .FORCE
 	$(info [*] MAKE $@)
-	$(Q)$(MAKE) --no-print-directory -C $(MBEDTLSLIBPATH) OBJDIR=$(ROOT_DIR)$(OBJDIR) BINDIR=$(ROOT_DIR)$(OBJDIR) all
+	$(Q)$(MAKE) --no-print-directory -C $(MBEDTLSLIBPATH) OBJDIR=$(MBEDTLSLIBCLIENTRELPATH)/$(OBJDIR) BINDIR=$(MBEDTLSLIBCLIENTRELPATH)/$(OBJDIR) all
 
 $(REVENGLIB): .FORCE
 	$(info [*] MAKE $@)
@@ -770,8 +775,8 @@ src/pm3_pywrap.c: pm3.i
 
 .PHONY: all clean install uninstall tarbin .FORCE
 
-# version.c should be remade on every compilation
-src/version.c: default_version.c
+# version_pm3.c should be remade on every compilation
+src/version_pm3.c: default_version_pm3.c
 	$(info [=] GEN $@)
 	$(Q)$(SH) ../tools/mkversion.sh > $@ || $(PERL) ../tools/mkversion.pl > $@ || $(CP) $< $@
 

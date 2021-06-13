@@ -88,7 +88,7 @@ add_library(pm3rrg_rdv4 SHARED
         ${PM3_ROOT}/client/src/mifare/mifare4.c
         ${PM3_ROOT}/client/src/mifare/mifaredefault.c
         ${PM3_ROOT}/client/src/mifare/mifarehost.c
-        ${PM3_ROOT}/client/src/mifare/ndef.c
+        ${PM3_ROOT}/client/src/nfc/ndef.c
         ${PM3_ROOT}/client/src/mifare/desfire_crypto.c
         ${PM3_ROOT}/client/src/uart/uart_posix.c
         ${PM3_ROOT}/client/src/uart/uart_win32.c
@@ -105,11 +105,12 @@ add_library(pm3rrg_rdv4 SHARED
         ${PM3_ROOT}/client/src/cmdhf14b.c
         ${PM3_ROOT}/client/src/cmdhf15.c
         ${PM3_ROOT}/client/src/cmdhfcryptorf.c
-        ${PM3_ROOT}/client/src/cmdhfepa.c
         ${PM3_ROOT}/client/src/cmdhfemrtd.c
+        ${PM3_ROOT}/client/src/cmdhfepa.c
         ${PM3_ROOT}/client/src/cmdhffelica.c
         ${PM3_ROOT}/client/src/cmdhffido.c
         ${PM3_ROOT}/client/src/cmdhficlass.c
+        ${PM3_ROOT}/client/src/cmdhfjooki.c
         ${PM3_ROOT}/client/src/cmdhflegic.c
         ${PM3_ROOT}/client/src/cmdhflist.c
         ${PM3_ROOT}/client/src/cmdhflto.c
@@ -119,6 +120,7 @@ add_library(pm3rrg_rdv4 SHARED
         ${PM3_ROOT}/client/src/cmdhfmfp.c
         ${PM3_ROOT}/client/src/cmdhfmfu.c
         ${PM3_ROOT}/client/src/cmdhfst.c
+        ${PM3_ROOT}/client/src/cmdhfst25ta.c
         ${PM3_ROOT}/client/src/cmdhfthinfilm.c
         ${PM3_ROOT}/client/src/cmdhftopaz.c
         ${PM3_ROOT}/client/src/cmdhfwaveshare.c
@@ -157,6 +159,7 @@ add_library(pm3rrg_rdv4 SHARED
         ${PM3_ROOT}/client/src/cmdlfviking.c
         ${PM3_ROOT}/client/src/cmdlfvisa2000.c
         ${PM3_ROOT}/client/src/cmdmain.c
+        ${PM3_ROOT}/client/src/cmdnfc.c
         ${PM3_ROOT}/client/src/cmdparser.c
         ${PM3_ROOT}/client/src/cmdscript.c
         ${PM3_ROOT}/client/src/cmdsmartcard.c

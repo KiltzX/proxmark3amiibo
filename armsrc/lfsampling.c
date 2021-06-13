@@ -39,12 +39,12 @@ static sampling_t samples = {0, 0, 0, 0};
 void printLFConfig(void) {
     uint32_t d = config.divisor;
     DbpString(_CYAN_("LF Sampling config"));
-    Dbprintf("  [q] divisor.............%d ( "_GREEN_("%d.%02d kHz")" )", d, 12000 / (d + 1), ((1200000 + (d + 1) / 2) / (d + 1)) - ((12000 / (d + 1)) * 100));
-    Dbprintf("  [b] bits per sample.....%d", config.bits_per_sample);
-    Dbprintf("  [d] decimation..........%d", config.decimation);
-    Dbprintf("  [a] averaging...........%s", (config.averaging) ? "Yes" : "No");
-    Dbprintf("  [t] trigger threshold...%d", config.trigger_threshold);
-    Dbprintf("  [s] samples to skip.....%d ", config.samples_to_skip);
+    Dbprintf("  [q] divisor............. %d ( "_GREEN_("%d.%02d kHz")" )", d, 12000 / (d + 1), ((1200000 + (d + 1) / 2) / (d + 1)) - ((12000 / (d + 1)) * 100));
+    Dbprintf("  [b] bits per sample..... %d", config.bits_per_sample);
+    Dbprintf("  [d] decimation.......... %d", config.decimation);
+    Dbprintf("  [a] averaging........... %s", (config.averaging) ? "yes" : "no");
+    Dbprintf("  [t] trigger threshold... %d", config.trigger_threshold);
+    Dbprintf("  [s] samples to skip..... %d ", config.samples_to_skip);
 
     DbpString(_CYAN_("LF Sampling Stack"));
     print_stack_usage();
@@ -54,8 +54,8 @@ void printSamples(void) {
     DbpString(_CYAN_("LF Sampling memory usage"));
 //    Dbprintf("  decimation counter...%d", samples.dec_counter);
 //    Dbprintf("  sum..................%u", samples.sum);
-    Dbprintf("  counter.............." _YELLOW_("%u"), samples.counter);
-    Dbprintf("  total saved.........." _YELLOW_("%u"), samples.total_saved);
+    Dbprintf("  counter.............. " _YELLOW_("%u"), samples.counter);
+    Dbprintf("  total saved.......... " _YELLOW_("%u"), samples.total_saved);
     print_stack_usage();
 }
 
@@ -73,11 +73,11 @@ void printSamples(void) {
 void setSamplingConfig(sample_config *sc) {
 
     // decimation (1-8) how many bits of adc sample value to save
-    if (sc->decimation > 0 && sc->decimation < 8)
+    if (sc->decimation > 0 && sc->decimation < 9)
         config.decimation = sc->decimation;
 
     // bits per sample (1-8)
-    if (sc->bits_per_sample > 0 && sc->bits_per_sample < 8)
+    if (sc->bits_per_sample > 0 && sc->bits_per_sample < 9)
         config.bits_per_sample = sc->bits_per_sample;
 
     //

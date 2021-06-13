@@ -592,7 +592,9 @@ bool OpenProxmark(pm3_device **dev, char *port, bool wait_for_port, int timeout,
         session.pm3_present = true; // TODO support for multiple devices
 
         fflush(stdout);
-        *dev = malloc(sizeof(pm3_device));
+        if (*dev == NULL) {
+            *dev = calloc(sizeof(pm3_device), sizeof(uint8_t));
+        }
         (*dev)->conn = &conn; // TODO conn shouldn't be global
         return true;
     }
@@ -838,6 +840,9 @@ static bool dl_it(uint8_t *dest, uint32_t bytes, PacketResponseNG *response, siz
         if (getReply(response)) {
 
             if (response->cmd == CMD_ACK)
+                return true;
+            // Spiffs download is converted to NG,
+            if (response->cmd == CMD_SPIFFS_DOWNLOAD)
                 return true;
 
             // sample_buf is a array pointer, located in data.c

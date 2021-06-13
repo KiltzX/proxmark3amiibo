@@ -106,7 +106,7 @@ int discoverDevices(unsigned int profile_selected, uint32_t device_types_selecte
     cl_device_info ocl_devices_info[8] = { CL_DEVICE_TYPE, CL_DEVICE_NAME, CL_DEVICE_VERSION, CL_DRIVER_VERSION, CL_DEVICE_VENDOR, CL_DEVICE_LOCAL_MEM_TYPE, CL_DEVICE_MAX_WORK_ITEM_SIZES, CL_DEVICE_MAX_COMPUTE_UNITS };
     unsigned int ocl_devices_info_cnt = sizeof(ocl_devices_info) / sizeof(cl_device_info);
 
-    unsigned int info_idx = 0;
+    unsigned int info_idx;
     size_t tmp_len = 0;
     char *tmp_buf = NULL;
 
@@ -120,7 +120,7 @@ int discoverDevices(unsigned int profile_selected, uint32_t device_types_selecte
 
         if ((*cd_ctx)[platform_idx].selected)(*selected_platforms_cnt)++;
 
-        if (verbose) printf("\n-- Platform ID: %d\n", platform_idx + 1);
+        if (verbose) printf("\n-- Platform ID: %u\n", platform_idx + 1);
 
         for (info_idx = 0; info_idx < ocl_platforms_info_cnt; info_idx++) {
             cl_platform_info ocl_info = ocl_platforms_info[info_idx];
@@ -208,7 +208,7 @@ int discoverDevices(unsigned int profile_selected, uint32_t device_types_selecte
 
         err = clGetDeviceIDs((*cd_ctx)[platform_idx].platform_id, CL_DEVICE_TYPE_ALL, ocl_device_max, ocl_devices, &ocl_device_cnt);
         if (ocl_device_cnt == 0) {
-            if (device_types_selected == CL_DEVICE_TYPE_ALL) printf("No device(s) available with platform id %d\n", platform_idx);
+            if (device_types_selected == CL_DEVICE_TYPE_ALL) printf("No device(s) available with platform id %u\n", platform_idx);
             (*cd_ctx)[platform_idx].device_cnt = 0;
             continue;
         }
@@ -254,7 +254,8 @@ int discoverDevices(unsigned int profile_selected, uint32_t device_types_selecte
 
                     if (verbose) printf("%14s: %s\n", "Device Type", (device_type & CL_DEVICE_TYPE_GPU) ? "GPU" : (device_type & CL_DEVICE_TYPE_CPU) ? "CPU" : "Other");
 
-                    (*cd_ctx)[platform_idx].device[device_idx].selected = plat_dev_enabled(global_device_id, dev_sel, dev_cnt, (unsigned int) device_type, device_types_selected);
+                    if ((*cd_ctx)[platform_idx].selected == false)(*cd_ctx)[platform_idx].device[device_idx].selected = false;
+                    else (*cd_ctx)[platform_idx].device[device_idx].selected = plat_dev_enabled(global_device_id, dev_sel, dev_cnt, (unsigned int) device_type, device_types_selected);
                     global_device_id++;
                     if ((*cd_ctx)[platform_idx].device[device_idx].selected)(*selected_devices_cnt)++;
                     continue;

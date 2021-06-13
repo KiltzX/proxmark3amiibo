@@ -50,10 +50,7 @@ static int CmdIOProxWatch(const char *Cmd) {
     PrintAndLogEx(INFO, "Press pm3-button to stop reading cards");
     clearCommandBuffer();
     SendCommandNG(CMD_LF_IO_WATCH, NULL, 0);
-    PacketResponseNG resp;
-    WaitForResponse(CMD_LF_IO_WATCH, &resp);
-    PrintAndLogEx(INFO, "Done");
-    return resp.status;
+    return lfsim_wait_check(CMD_LF_IO_WATCH);
 }
 
 //IO-Prox demod - FSK RF/64 with preamble of 000000001
@@ -259,7 +256,8 @@ static int CmdIOProxClone(const char *Cmd) {
 
     CLIParserContext *ctx;
     CLIParserInit(&ctx, "lf io clone",
-                  "Enables simulation of ioProx card with specified facility-code and card number.\n"
+                  "clone a ioProx card with specified facility-code and card number\n"
+                  "to a T55x7, Q5/T5555 or EM4305/4469 tag.\n"
                   "Tag must be on the antenna when issuing this command.",
                   "lf io clone --vn 1 --fc 101 --cn 1337"
                  );

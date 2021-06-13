@@ -60,6 +60,7 @@ int CmdWiegandEncode(const char *Cmd) {
         arg_u64_0(NULL, "issue", "<dec>", "issue level"),
         arg_u64_0(NULL, "oem", "<dec>", "OEM code"),
         arg_str0("w", "wiegand", "<format>", "see `wiegand list` for available formats"),
+        arg_lit0(NULL, "pre", "add HID ProxII preamble to wiegand output"),
         arg_param_end
     };
     CLIExecWithReturn(ctx, Cmd, argtable, true);
@@ -75,6 +76,7 @@ int CmdWiegandEncode(const char *Cmd) {
     int len = 0;
     char format[16] = {0};
     CLIParamStrToBuf(arg_get_str(ctx, 5), (uint8_t *)format, sizeof(format), &len);
+    bool preamble = arg_get_lit(ctx, 6);
     CLIParserFree(ctx);
 
     int idx = -1;
@@ -89,14 +91,14 @@ int CmdWiegandEncode(const char *Cmd) {
     if (idx != -1) {
         wiegand_message_t packed;
         memset(&packed, 0, sizeof(wiegand_message_t));
-        if (HIDPack(idx, &data, &packed) == false) {
+        if (HIDPack(idx, &data, &packed, preamble) == false) {
             PrintAndLogEx(WARNING, "The card data could not be encoded in the selected format.");
             return PM3_ESOFT;
         }
         print_wiegand_code(&packed);
     } else {
         // try all formats and print only the ones that work.
-        HIDPackTryAll(&data);
+        HIDPackTryAll(&data, preamble);
     }
     return PM3_SUCCESS;
 }
@@ -105,35 +107,51 @@ int CmdWiegandDecode(const char *Cmd) {
 
     CLIParserContext *ctx;
     CLIParserInit(&ctx, "wiegand decode",
-                  "Decode raw hex to wiegand format",
+                  "Decode raw hex or binary to wiegand format",
                   "wiegand decode --raw 2006f623ae"
                  );
 
     void *argtable[] = {
         arg_param_begin,
-        arg_lit0("p", "parity", "ignore invalid parity"),
-        arg_strx1("r", "raw", "<hex>", "raw hex to be decoded"),
+        arg_strx0("r", "raw", "<hex>", "raw hex to be decoded"),
+        arg_str0("b", "bin", "<bin>", "binary string to be decoded"),
         arg_param_end
     };
-    CLIExecWithReturn(ctx, Cmd, argtable, false);
-
-    bool ignore_parity = arg_get_lit(ctx, 1);
-    int len = 0;
+    CLIExecWithReturn(ctx, Cmd, argtable, true);
+    int hlen = 0;
     char hex[40] = {0};
-    CLIParamStrToBuf(arg_get_str(ctx, 2), (uint8_t *)hex, sizeof(hex), &len);
+    CLIParamStrToBuf(arg_get_str(ctx, 1), (uint8_t *)hex, sizeof(hex), &hlen);
+
+    int blen = 0;
+    uint8_t binarr[100] = {0x00};
+    int res = CLIParamBinToBuf(arg_get_str(ctx, 2), binarr, sizeof(binarr), &blen);
     CLIParserFree(ctx);
 
-    if (len == 0) {
-        PrintAndLogEx(ERR, "empty input");
+    if (res) {
+        PrintAndLogEx(FAILED, "Error parsing binary string");
         return PM3_EINVARG;
     }
 
     uint32_t top = 0, mid = 0, bot = 0;
-    hexstring_to_u96(&top, &mid, &bot, hex);
 
-    wiegand_message_t packed = initialize_message_object(top, mid, bot);
-    HIDTryUnpack(&packed, ignore_parity);
-
+    if (hlen) {
+        res = hexstring_to_u96(&top, &mid, &bot, hex);
+        if (res != hlen) {
+            PrintAndLogEx(ERR, "hex string contains none hex chars");
+            return PM3_EINVARG;
+        }
+    } else if (blen) {
+        int n = binarray_to_u96(&top, &mid, &bot, binarr, blen);
+        if (n != blen) {
+            PrintAndLogEx(ERR, "Binary string contains none <0|1> chars");
+            return PM3_EINVARG;
+        }
+    } else {
+        PrintAndLogEx(ERR, "empty input");
+        return PM3_EINVARG;
+    }
+    wiegand_message_t packed = initialize_message_object(top, mid, bot, blen);
+    HIDTryUnpack(&packed);
     return PM3_SUCCESS;
 }
 

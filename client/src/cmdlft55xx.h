@@ -32,6 +32,7 @@
 #define T55X7_NORALSY_CONFIG_BLOCK      0x00088C6A  // ASK, compat mode,   (NORALSY - KCP3000), data rate 32, 3 data blocks
 #define T55X7_PRESCO_CONFIG_BLOCK       0x00088088  // ASK, data rate 32, Manchester, 4 data blocks, STT
 #define T55X7_SECURAKEY_CONFIG_BLOCK    0x000C8060  // ASK, Manchester, data rate 40, 3 data blocks
+#define T55X7_UNK_CONFIG_BLOCK          0x000880FA  // ASK, Manchester, data rate 32, 7 data blocks STT, Inverse ...
 
 // FDXB requires data inversion and BiPhase 57 is simply BiPhase 50 inverted, so we can either do it using the modulation scheme or the inversion flag
 // we've done both below to prove that it works either way, and the modulation value for BiPhase 50 in the Atmel data sheet of binary "10001" (17) is a typo,
@@ -51,6 +52,7 @@
 #define T55X7_MOTOROLA_CONFIG_BLOCK     0x00081040  // PSK1, data rate 32, 2 data blocks
 #define T55X7_NEXWATCH_CONFIG_BLOCK     0x00081060  // PSK1 data rate 16, psk carrier FC * 2, 3 data blocks
 #define T55X7_KERI_CONFIG_BLOCK         0x603E1040  // PSK1, 2 data blocks
+#define T55X7_IDTECK_CONFIG_BLOCK       0x00081040  // PSK1, data rate 32, 2 data blocks
 
 #define T55X7_JABLOTRON_CONFIG_BLOCK    0x00158040  // Biphase, data rate 64, 2 data blocks
 #define T55X7_GUARDPROXII_CONFIG_BLOCK  0x00150060  // Biphase, data rate 64, Direct modulation, 3 data blocks
@@ -126,10 +128,10 @@ typedef struct {
     uint8_t offset;
     uint32_t block0;
     enum {
-        notSet     = 0x00,
-        autoDetect = 0x01,
-        userSet    = 0x02,
-        tagRead    = 0x03,
+        NOTSET     = 0x00,
+        AUTODETECT = 0x01,
+        USERSET    = 0x02,
+        TAGREAD    = 0x03,
     } block0Status;
     enum {
         RF_8 = 0x00,

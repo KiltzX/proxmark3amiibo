@@ -13,7 +13,6 @@
 
 #include "common.h"
 
-int CmdHF_ST(const char *Cmd);
+char *get_st_chip_model(uint8_t pc);
 
-int infoHF_ST(void);
 #endif

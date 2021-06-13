@@ -78,6 +78,44 @@ struct wave_info_t {
 } PACKED;
 
 /**
+ * @brief detects if file is of a supported filetype based on extension
+ * @param filename
+ * @return o
+ */
+DumpFileType_t getfiletype(const char *filename) {
+    // assume unknown file is BINARY
+    DumpFileType_t o = BIN;
+    if (filename == NULL) {
+        return o;
+    }
+
+    size_t len = strlen(filename);
+    if (len > 4) {
+        //  check if valid file extension and attempt to load data
+        char s[FILE_PATH_SIZE];
+        memset(s, 0, sizeof(s));
+        memcpy(s, filename, len);
+        str_lower(s);
+
+        if (str_endswith(s, "bin")) {
+            o = BIN;
+        } else if (str_endswith(s, "eml")) {
+            o = EML;
+        } else if (str_endswith(s, "json")) {
+            o = JSON;
+        } else if (str_endswith(s, "dic")) {
+            o = DICTIONARY;
+        } else {
+            // mfd, trc, trace is binary
+            o = BIN;
+            // log is text
+            // .pm3 is text values of signal data
+        }
+    }
+    return o;
+}
+
+/**
  * @brief checks if a file exists
  * @param filename
  * @return
@@ -428,13 +466,13 @@ int saveFileJSONex(const char *preferredName, JSONFileType ftype, uint8_t *data,
         case jsfIclass: {
             JsonSaveStr(root, "FileType", "iclass");
 
-            picopass_hdr *hdr = (picopass_hdr *)data;
+            picopass_hdr_t *hdr = (picopass_hdr_t *)data;
             JsonSaveBufAsHexCompact(root, "$.Card.CSN", hdr->csn, sizeof(hdr->csn));
             JsonSaveBufAsHexCompact(root, "$.Card.Configuration", (uint8_t *)&hdr->conf, sizeof(hdr->conf));
 
             uint8_t pagemap = get_pagemap(hdr);
             if (pagemap == PICOPASS_NON_SECURE_PAGEMODE) {
-                picopass_ns_hdr *ns_hdr = (picopass_ns_hdr *)data;
+                picopass_ns_hdr_t *ns_hdr = (picopass_ns_hdr_t *)data;
                 JsonSaveBufAsHexCompact(root, "$.Card.AIA", ns_hdr->app_issuer_area, sizeof(ns_hdr->app_issuer_area));
             } else {
                 JsonSaveBufAsHexCompact(root, "$.Card.Epurse", hdr->epurse, sizeof(hdr->epurse));
@@ -601,6 +639,9 @@ int saveFileJSONex(const char *preferredName, JSONFileType ftype, uint8_t *data,
             }
             break;
         }
+        case jsfFido: {
+            break;
+        }
         case jsfCustom: {
             (*callback)(root);
             break;
@@ -624,6 +665,36 @@ out:
     json_decref(root);
     free(fileName);
     return retval;
+}
+int saveFileJSONroot(const char *preferredName, void *root, size_t flags, bool verbose) {
+    return saveFileJSONrootEx(preferredName, root, flags, verbose, false);
+}
+int saveFileJSONrootEx(const char *preferredName, void *root, size_t flags, bool verbose, bool overwrite) {
+    if (root == NULL)
+        return PM3_EINVARG;
+
+    char *filename = NULL;
+    if (overwrite)
+        filename = filenamemcopy(preferredName, ".json");
+    else
+        filename = newfilenamemcopy(preferredName, ".json");
+
+    if (filename == NULL)
+        return PM3_EMALLOC;
+
+    int res = json_dump_file(root, filename, flags);
+
+    if (res == 0) {
+        if (verbose) {
+            PrintAndLogEx(SUCCESS, "saved to json file " _YELLOW_("%s"), filename);
+        }
+        free(filename);
+        return PM3_SUCCESS;
+    } else {
+        PrintAndLogEx(FAILED, "error: can't save the file: " _YELLOW_("%s"), filename);
+    }
+    free(filename);
+    return PM3_EFILE;
 }
 
 int saveFileWAVE(const char *preferredName, int *data, size_t datalen) {
@@ -913,7 +984,6 @@ out:
     free(fileName);
     return retval;
 }
-
 int loadFileEML_safe(const char *preferredName, void **pdata, size_t *datalen) {
     char *path;
     int res = searchFile(&path, RESOURCES_SUBDIR, preferredName, "", false);
@@ -1172,12 +1242,51 @@ int loadFileJSONex(const char *preferredName, void *data, size_t maxdatalen, siz
         *datalen = sptr;
     }
 
+    if (!strcmp(ctype, "15693")) {
+        JsonLoadBufAsHex(root, "$.raw", udata, maxdatalen, datalen);
+    }
+
 out:
 
     if (callback != NULL) {
         (*callback)(root);
     }
 
+    json_decref(root);
+    return retval;
+}
+
+int loadFileJSONroot(const char *preferredName, void **proot, bool verbose) {
+    char *path;
+    int res = searchFile(&path, RESOURCES_SUBDIR, preferredName, ".json", false);
+    if (res != PM3_SUCCESS) {
+        return PM3_EFILE;
+    }
+
+    json_error_t error;
+    json_t *root = json_load_file(path, 0, &error);
+    if (verbose)
+        PrintAndLogEx(SUCCESS, "loaded from JSON file " _YELLOW_("%s"), path);
+
+    free(path);
+
+    int retval = PM3_SUCCESS;
+    if (root == NULL) {
+        PrintAndLogEx(ERR, "ERROR: json " _YELLOW_("%s") " error on line %d: %s", preferredName, error.line, error.text);
+        retval = PM3_ESOFT;
+        goto out;
+    }
+
+    if (!json_is_object(root)) {
+        PrintAndLogEx(ERR, "ERROR: Invalid json " _YELLOW_("%s") " format. root must be an object.", preferredName);
+        retval = PM3_ESOFT;
+        goto out;
+    }
+
+    *proot = root;
+    return PM3_SUCCESS;
+
+out:
     json_decref(root);
     return retval;
 }
@@ -1559,7 +1668,7 @@ static int filelist(const char *path, const char *ext, uint8_t last, bool tentat
             filelist(newpath, ext, last + ((i == n - 1) << (indent + 1)), tentative, indent + 1, strlen(path));
         } else {
 
-            if ((ext == NULL) || (ext && (str_endswith(namelist[i]->d_name, ext)))) {
+            if ((ext == NULL) || ((str_endswith(namelist[i]->d_name, ext)))) {
 
                 for (uint8_t j = 0; j < indent + 1; j++) {
                     PrintAndLogEx(NORMAL, "%s   " NOLF, ((last >> j) & 1) ? " " : "│");
@@ -1767,7 +1876,7 @@ int searchFile(char **foundpath, const char *pm3dir, const char *searchname, con
     int res = searchFinalFile(foundpath, pm3dir, filename, silent);
     if (res != PM3_SUCCESS) {
         if ((res == PM3_EFILE) && (!silent))
-            PrintAndLogEx(FAILED, "Error - can't find %s", filename);
+            PrintAndLogEx(FAILED, "Error - can't find `" _YELLOW_("%s") "`", filename);
         free(filename);
         return res;
     }

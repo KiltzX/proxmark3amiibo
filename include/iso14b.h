@@ -41,4 +41,21 @@ typedef enum ISO14B_COMMAND {
     ISO14B_CLEARTRACE = (1 << 11),
 } iso14b_command_t;
 
+typedef struct {
+    uint16_t flags;      // the ISO14B_COMMAND enum
+    uint32_t timeout;
+    uint16_t rawlen;
+    uint8_t raw[];
+} PACKED iso14b_raw_cmd_t;
+
+
+#define US_TO_SSP(x)   ( (uint32_t)((x) * 3.39) )
+#define SSP_TO_US(x)   ( (uint32_t)((x) / 3.39) )
+
+#define ETU_TO_SSP(x)  ((x) * 32)
+#define SSP_TO_ETU(x)  ((x) / 32)
+
+#define ETU_TO_US(x)   ((((x) * 9440000) / 1000000) + 0.5)
+#define US_TO_ETU(x)   ((((x) * 1000000 / 9440000) + 0.5))
+
 #endif // _ISO14B_H_

@@ -481,8 +481,8 @@ void askAmp(uint8_t *bits, size_t size) {
 uint32_t manchesterEncode2Bytes(uint16_t datain) {
     uint32_t output = 0;
     for (uint8_t i = 0; i < 16; i++) {
-        uint8_t curBit = (datain >> (15 - i) & 1);
-        output |= (1 << (((15 - i) * 2) + curBit));
+        uint8_t b = (datain >> (15 - i) & 1);
+        output |= (1 << (((15 - i) * 2) + b));
     }
     return output;
 }
@@ -1720,8 +1720,13 @@ int askdemod_ext(uint8_t *bits, size_t *size, int *clk, int *invert, int maxErr,
             } else if (bits[i] <= low) {
                 bits[bitnum++] = *invert ^ 1;
             } else if (i - lastBit >= *clk / 2 + tol) {
-                bits[bitnum] = bits[bitnum - 1];
-                bitnum++;
+                if (bitnum > 0) {
+                    bits[bitnum] = bits[bitnum - 1];
+                    bitnum++;
+                } else {
+                    bits[bitnum] = 0;
+                    bitnum++;
+                }
             } else { //in tolerance - looking for peak
                 continue;
             }
